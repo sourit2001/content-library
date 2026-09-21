@@ -2375,40 +2375,13 @@ async function openMusicApp(url) {
   }
   await openExternalUrl(url);
 }
-function openExternalUrl(url, appPath = "") {
+function openExternalUrl(url, _appPath = "") {
   if (import_obsidian3.Platform.isMobile) {
     window.location.href = url;
     return Promise.resolve();
   }
   try {
-    const childProcess = typeof require === "function" ? require("child_process") : null;
-    if (childProcess?.execFile) {
-      const execFile = childProcess.execFile;
-      return new Promise((resolve, reject) => {
-        execFile("/usr/bin/open", [url], (error) => {
-          if (error) {
-            reject(error);
-            return;
-          }
-          if (!appPath) {
-            resolve();
-            return;
-          }
-          execFile("/usr/bin/open", ["-a", appPath], (activateError) => activateError ? reject(activateError) : resolve());
-        });
-      });
-    }
-  } catch {
-  }
-  try {
-    const electron = typeof require === "function" ? require("electron") : null;
-    if (electron?.shell?.openExternal) {
-      return electron.shell.openExternal(url);
-    }
-  } catch {
-  }
-  try {
-    window.open(url, "_blank");
+    window.open(url, "_blank", "noopener,noreferrer");
   } catch {
     return Promise.reject(new Error("\u65E0\u6CD5\u6253\u5F00\u5916\u90E8\u94FE\u63A5"));
   }

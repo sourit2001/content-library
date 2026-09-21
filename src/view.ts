@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-misused-promises, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, obsidianmd/prefer-create-el, no-alert */
-
 import {
   App,
   ItemView,
@@ -2189,42 +2187,13 @@ async function openMusicApp(url: string): Promise<void> {
   await openExternalUrl(url);
 }
 
-function openExternalUrl(url: string, appPath = ""): Promise<void> {
+function openExternalUrl(url: string, _appPath = ""): Promise<void> {
   if (Platform.isMobile) {
     window.location.href = url;
     return Promise.resolve();
   }
   try {
-    const childProcess = typeof require === "function" ? require("child_process") as { execFile?: (file: string, args: string[], callback: (error: Error | null) => void) => void } : null;
-    if (childProcess?.execFile) {
-      const execFile = childProcess.execFile;
-      return new Promise((resolve, reject) => {
-        execFile("/usr/bin/open", [url], (error) => {
-          if (error) {
-            reject(error);
-            return;
-          }
-          if (!appPath) {
-            resolve();
-            return;
-          }
-          execFile("/usr/bin/open", ["-a", appPath], (activateError) => activateError ? reject(activateError) : resolve());
-        });
-      });
-    }
-  } catch {
-    // Fall through to Electron shell or browser fallback.
-  }
-  try {
-    const electron = typeof require === "function" ? require("electron") as { shell?: { openExternal?: (value: string) => Promise<void> } } : null;
-    if (electron?.shell?.openExternal) {
-      return electron.shell.openExternal(url);
-    }
-  } catch {
-    // Obsidian mobile and restricted runtimes may not expose Electron shell.
-  }
-  try {
-    window.open(url, "_blank");
+    window.open(url, "_blank", "noopener,noreferrer");
   } catch {
     return Promise.reject(new Error("无法打开外部链接"));
   }
