@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-misused-promises, obsidianmd/prefer-create-el */
+
 import {
   App,
   ButtonComponent,

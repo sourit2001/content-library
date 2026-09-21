@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-misused-promises, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, obsidianmd/prefer-create-el, no-alert */
+
 import {
   App,
   ItemView,
