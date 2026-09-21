@@ -223,7 +223,7 @@ var ContentLibrarySettingsTab = class extends import_obsidian2.PluginSettingTab 
     containerEl.addClass("cld-settings");
     containerEl.createEl("h2", { text: "\u5185\u5BB9\u56FE\u4E66\u9986" });
     containerEl.createEl("p", {
-      text: "\u9009\u62E9\u8981\u663E\u793A\u7684\u6587\u4EF6\u5939\u5373\u53EF\u3002\u97F3\u9891\u6587\u4EF6\u5939\u4F1A\u81EA\u52A8\u53D8\u6210\u64AD\u653E\u5217\u8868\uFF0C\u666E\u901A\u6587\u4EF6\u5939\u4F1A\u663E\u793A\u7B14\u8BB0\u3002"
+      text: "\u4E0D\u9700\u8981\u9884\u5148\u521B\u5EFA\u56FA\u5B9A\u6587\u4EF6\u5939\u3002\u9009\u62E9 Vault \u91CC\u5DF2\u6709\u7684\u6587\u4EF6\u5939\u5373\u53EF\uFF1B\u663E\u793A\u540D\u79F0\u53EF\u4EE5\u548C\u5B9E\u9645\u8DEF\u5F84\u4E0D\u540C\u3002"
     });
     containerEl.createEl("h3", { text: "\u5916\u89C2" });
     new import_obsidian2.Setting(containerEl).setName("\u6807\u9898").addText((text) => text.setValue(this.plugin.settings.dashboardTitle).onChange(async (value) => {
@@ -256,7 +256,7 @@ var ContentLibrarySettingsTab = class extends import_obsidian2.PluginSettingTab 
         await this.plugin.saveSettings();
       });
     });
-    new import_obsidian2.Setting(containerEl).setName("\u6A2A\u5E45\u56FE\u7247").setDesc("\u53EF\u4EE5\u586B\u5199 Vault \u5185\u56FE\u7247\u8DEF\u5F84\u6216\u7F51\u7EDC\u56FE\u7247\u5730\u5740\u3002").addText((text) => text.setPlaceholder("Card Dashboard Assets/banner.jpg").setValue(this.plugin.settings.bannerPath).onChange(async (value) => {
+    new import_obsidian2.Setting(containerEl).setName("\u6A2A\u5E45\u56FE\u7247").setDesc("\u53EF\u586B\u5199 Vault \u5185\u56FE\u7247\u8DEF\u5F84\u6216\u7F51\u7EDC\u56FE\u7247\u5730\u5740\uFF0C\u4E5F\u53EF\u4EE5\u76F4\u63A5\u5BFC\u5165\u3002\u6CA1\u6709\u56FE\u7247\u65F6\u4F7F\u7528\u5185\u7F6E\u73BB\u7483\u5360\u4F4D\u56FE\u3002").addText((text) => text.setPlaceholder("Card Dashboard Assets/banner.jpg").setValue(this.plugin.settings.bannerPath).onChange(async (value) => {
       this.plugin.settings.bannerPath = value.trim();
       await this.plugin.saveSettings();
     })).addButton((button) => button.setButtonText("\u5BFC\u5165\u56FE\u7247").onClick(() => {
@@ -270,7 +270,7 @@ var ContentLibrarySettingsTab = class extends import_obsidian2.PluginSettingTab 
         }
       });
     }));
-    new import_obsidian2.Setting(containerEl).setName("\u6279\u6CE8\u4FDD\u5B58\u4F4D\u7F6E").setDesc("\u9605\u8BFB\u6279\u6CE8\u548C\u97F3\u9891\u7B14\u8BB0\u4F1A\u4FDD\u5B58\u5230\u8FD9\u91CC\u3002").addText((text) => text.setValue(this.plugin.settings.annotationFolder).onChange(async (value) => {
+    new import_obsidian2.Setting(containerEl).setName("\u6279\u6CE8\u4FDD\u5B58\u4F4D\u7F6E").setDesc("\u9605\u8BFB\u6279\u6CE8\u548C\u97F3\u9891\u7B14\u8BB0\u4F1A\u4FDD\u5B58\u5230\u8FD9\u91CC\uFF1B\u6587\u4EF6\u5939\u4F1A\u5728\u7B2C\u4E00\u6B21\u4FDD\u5B58\u65F6\u521B\u5EFA\uFF0C\u4E5F\u53EF\u4EE5\u6539\u6210\u4F60\u81EA\u5DF1\u7684\u8DEF\u5F84\u3002").addText((text) => text.setValue(this.plugin.settings.annotationFolder).onChange(async (value) => {
       this.plugin.settings.annotationFolder = value.trim() || "Dashboard Notes";
       await this.plugin.saveSettings(false);
     }));
@@ -331,7 +331,7 @@ var ContentLibrarySettingsTab = class extends import_obsidian2.PluginSettingTab 
       await this.plugin.saveSettings(false);
       this.display();
     });
-    new import_obsidian2.Setting(body).setName("\u663E\u793A\u540D\u79F0").addText((text) => text.setValue(source.name).onChange(async (value) => {
+    new import_obsidian2.Setting(body).setName("\u663E\u793A\u540D\u79F0").setDesc("\u8FD9\u662F Dashboard \u4E0A\u663E\u793A\u7684\u540D\u79F0\uFF0C\u4E0D\u4F1A\u4FEE\u6539 Vault \u4E2D\u7684\u5B9E\u9645\u6587\u4EF6\u5939\u540D\u79F0\u3002").addText((text) => text.setValue(source.name).onChange(async (value) => {
       source.name = value.trim() || "\u6587\u4EF6\u5939";
       await this.plugin.saveSettings();
     }));
@@ -342,7 +342,7 @@ var ContentLibrarySettingsTab = class extends import_obsidian2.PluginSettingTab 
         await this.plugin.saveSettings();
       });
     });
-    new import_obsidian2.Setting(body).setName("\u9009\u62E9\u6587\u4EF6\u5939").addDropdown((dropdown) => {
+    new import_obsidian2.Setting(body).setName("\u9009\u62E9\u6587\u4EF6\u5939").setDesc("\u9009\u62E9 Vault \u4E2D\u5DF2\u6709\u7684\u4EFB\u610F\u6587\u4EF6\u5939\uFF1B\u63D2\u4EF6\u4E0D\u4F1A\u79FB\u52A8\u6216\u590D\u5236\u5176\u4E2D\u7684\u7B14\u8BB0\u3002").addDropdown((dropdown) => {
       const folders = this.app.vault.getAllLoadedFiles().filter((file) => file instanceof import_obsidian2.TFolder && Boolean(file.path)).sort((a, b) => a.path.localeCompare(b.path));
       if (source.folder && !folders.some((folder) => folder.path === source.folder)) dropdown.addOption(source.folder, source.folder);
       dropdown.addOption("", "\u8BF7\u9009\u62E9");

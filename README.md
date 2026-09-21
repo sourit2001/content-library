@@ -14,6 +14,33 @@ An independent Obsidian dashboard for books, podcasts, web clips, X briefs, cust
 - Writes reading annotations and podcast moments back to ordinary Markdown notes.
 - Lets every source folder and content item use a local or remote custom cover.
 
+## Getting started
+
+You do not need to create any special folder names before installing the plugin.
+Choose any existing Vault folder from the plugin settings.
+
+1. Install and enable **Content Library Dashboard**.
+2. Open **Settings → Community plugins → Content Library Dashboard**.
+3. Under **My folders**, click **Add folder**.
+4. Choose a folder, then set its display name and category.
+
+The display name is independent from the real Vault path. For example,
+`Inbox/Podcast Notes` can be shown as `播客` without moving or renaming files.
+
+### Images and covers
+
+Images are optional. Without a cover, the dashboard uses its built-in glass
+placeholder. Covers can come from note frontmatter (`cover`, `coverPath`,
+`image`, or `thumbnail`), a content card's menu, or the banner setting.
+
+Imported images are stored in `Content Library Assets/Banners` or
+`Content Library Assets/Covers` inside the Vault. These folders are created only
+when you import an image.
+
+The default annotation folder is `Dashboard Notes`. It is created only when the
+plugin first saves a reading annotation or audio note, and can be changed in
+settings. The plugin does not create sample content or copy your library.
+
 ## Development
 
 ```bash

@@ -24,7 +24,7 @@ export class ContentLibrarySettingsTab extends PluginSettingTab {
     containerEl.addClass("cld-settings");
     containerEl.createEl("h2", { text: "内容图书馆" });
     containerEl.createEl("p", {
-      text: "选择要显示的文件夹即可。音频文件夹会自动变成播放列表，普通文件夹会显示笔记。",
+      text: "不需要预先创建固定文件夹。选择 Vault 里已有的文件夹即可；显示名称可以和实际路径不同。",
     });
 
     containerEl.createEl("h3", { text: "外观" });
@@ -77,7 +77,7 @@ export class ContentLibrarySettingsTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("横幅图片")
-      .setDesc("可以填写 Vault 内图片路径或网络图片地址。")
+      .setDesc("可填写 Vault 内图片路径或网络图片地址，也可以直接导入。没有图片时使用内置玻璃占位图。")
       .addText((text) => text
         .setPlaceholder("Card Dashboard Assets/banner.jpg")
         .setValue(this.plugin.settings.bannerPath)
@@ -99,7 +99,7 @@ export class ContentLibrarySettingsTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("批注保存位置")
-      .setDesc("阅读批注和音频笔记会保存到这里。")
+      .setDesc("阅读批注和音频笔记会保存到这里；文件夹会在第一次保存时创建，也可以改成你自己的路径。")
       .addText((text) => text
         .setValue(this.plugin.settings.annotationFolder)
         .onChange(async (value) => {
@@ -176,7 +176,7 @@ export class ContentLibrarySettingsTab extends PluginSettingTab {
       this.display();
     });
 
-    new Setting(body).setName("显示名称").addText((text) => text
+    new Setting(body).setName("显示名称").setDesc("这是 Dashboard 上显示的名称，不会修改 Vault 中的实际文件夹名称。").addText((text) => text
       .setValue(source.name)
       .onChange(async (value) => {
         source.name = value.trim() || "文件夹";
@@ -189,7 +189,7 @@ export class ContentLibrarySettingsTab extends PluginSettingTab {
         await this.plugin.saveSettings();
       });
     });
-    new Setting(body).setName("选择文件夹").addDropdown((dropdown) => {
+    new Setting(body).setName("选择文件夹").setDesc("选择 Vault 中已有的任意文件夹；插件不会移动或复制其中的笔记。").addDropdown((dropdown) => {
       const folders = this.app.vault.getAllLoadedFiles()
         .filter((file): file is TFolder => file instanceof TFolder && Boolean(file.path))
         .sort((a, b) => a.path.localeCompare(b.path));
