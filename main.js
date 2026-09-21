@@ -379,7 +379,7 @@ function chooseImage(callback) {
 var import_obsidian3 = require("obsidian");
 var CONTENT_LIBRARY_VIEW_TYPE = "content-library-dashboard-view";
 var ANNOTATION_SOURCE_ID = "system-dashboard-annotations";
-var ContentLibraryView = class extends import_obsidian3.ItemView {
+var ContentLibraryView = class _ContentLibraryView extends import_obsidian3.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     this.plugin = plugin;
@@ -415,7 +415,7 @@ var ContentLibraryView = class extends import_obsidian3.ItemView {
     this.inspirationOffset = Math.floor(Math.random() * 1e6);
     this.inspirationHourKey = this.currentInspirationHour();
     this.registerInterval(window.setInterval(() => {
-      if (this.app.workspace.activeLeaf === this.leaf && document.hasFocus()) {
+      if (this.app.workspace.getActiveViewOfType(_ContentLibraryView)?.leaf === this.leaf && document.hasFocus()) {
         void this.plugin.recordUsageMinute().then(() => {
           const value = this.contentEl.querySelector('[data-metric="\u4F7F\u7528\u65F6\u95F4"] strong');
           if (value) value.textContent = formatUsage(this.plugin.todayUsageMinutes());
@@ -424,7 +424,7 @@ var ContentLibraryView = class extends import_obsidian3.ItemView {
     }, 6e4));
     this.registerInterval(window.setInterval(() => this.updateTodayClock(), 1e3));
     this.registerInterval(window.setInterval(() => {
-      if (this.app.workspace.activeLeaf !== this.leaf || this.detailOpen || this.activeSourceId !== "today") return;
+      if (this.app.workspace.getActiveViewOfType(_ContentLibraryView)?.leaf !== this.leaf || this.detailOpen || this.activeSourceId !== "today") return;
       const hour = this.currentInspirationHour();
       if (hour === this.inspirationHourKey) return;
       this.inspirationHourKey = hour;
@@ -3430,7 +3430,7 @@ playlist_url: ${url.trim()}
     const nextTitle = title.trim();
     if (!nextTitle) throw new Error("\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A\u3002");
     await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-      frontmatter.title = nextTitle;
+      Object.assign(frontmatter, { title: nextTitle });
     });
   }
   async setCoverOverride(item, path) {

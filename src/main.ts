@@ -754,7 +754,7 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
     const nextTitle = title.trim();
     if (!nextTitle) throw new Error("名称不能为空。");
     await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-      frontmatter.title = nextTitle;
+      Object.assign(frontmatter, { title: nextTitle });
     });
   }
 

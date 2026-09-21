@@ -79,7 +79,7 @@ export class ContentLibraryView extends ItemView {
     this.inspirationOffset = Math.floor(Math.random() * 1_000_000);
     this.inspirationHourKey = this.currentInspirationHour();
     this.registerInterval(window.setInterval(() => {
-      if (this.app.workspace.activeLeaf === this.leaf && document.hasFocus()) {
+      if (this.app.workspace.getActiveViewOfType(ContentLibraryView)?.leaf === this.leaf && document.hasFocus()) {
         void this.plugin.recordUsageMinute().then(() => {
           const value = this.contentEl.querySelector<HTMLElement>('[data-metric="使用时间"] strong');
           if (value) value.textContent = formatUsage(this.plugin.todayUsageMinutes());
@@ -88,7 +88,7 @@ export class ContentLibraryView extends ItemView {
     }, 60_000));
     this.registerInterval(window.setInterval(() => this.updateTodayClock(), 1_000));
     this.registerInterval(window.setInterval(() => {
-      if (this.app.workspace.activeLeaf !== this.leaf || this.detailOpen || this.activeSourceId !== "today") return;
+      if (this.app.workspace.getActiveViewOfType(ContentLibraryView)?.leaf !== this.leaf || this.detailOpen || this.activeSourceId !== "today") return;
       const hour = this.currentInspirationHour();
       if (hour === this.inspirationHourKey) return;
       this.inspirationHourKey = hour;

@@ -1,3 +1,5 @@
+/* stylelint-disable declaration-no-important */
+
 .workspace-leaf-content[data-type="content-library-dashboard-view"] .view-content {
   padding: 0;
   overflow: auto;
@@ -326,7 +328,6 @@
   border: 0;
   border-radius: 13px;
   background: color-mix(in srgb, var(--cld-card) 64%, transparent);
-  text-align: left;
   justify-items: start;
   text-align: left;
 }
