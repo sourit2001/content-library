@@ -221,11 +221,11 @@ var ContentLibrarySettingsTab = class extends import_obsidian2.PluginSettingTab 
     const { containerEl } = this;
     containerEl.empty();
     containerEl.addClass("cld-settings");
-    containerEl.createEl("h2", { text: "\u5185\u5BB9\u56FE\u4E66\u9986" });
+    new import_obsidian2.Setting(containerEl).setName("\u5185\u5BB9\u56FE\u4E66\u9986").setHeading();
     containerEl.createEl("p", {
       text: "\u4E0D\u9700\u8981\u9884\u5148\u521B\u5EFA\u56FA\u5B9A\u6587\u4EF6\u5939\u3002\u9009\u62E9 Vault \u91CC\u5DF2\u6709\u7684\u6587\u4EF6\u5939\u5373\u53EF\uFF1B\u663E\u793A\u540D\u79F0\u53EF\u4EE5\u548C\u5B9E\u9645\u8DEF\u5F84\u4E0D\u540C\u3002"
     });
-    containerEl.createEl("h3", { text: "\u5916\u89C2" });
+    new import_obsidian2.Setting(containerEl).setName("\u5916\u89C2").setHeading();
     new import_obsidian2.Setting(containerEl).setName("\u6807\u9898").addText((text) => text.setValue(this.plugin.settings.dashboardTitle).onChange(async (value) => {
       this.plugin.settings.dashboardTitle = value.trim() || "\u5185\u5BB9\u56FE\u4E66\u9986";
       await this.plugin.saveSettings();
@@ -275,7 +275,7 @@ var ContentLibrarySettingsTab = class extends import_obsidian2.PluginSettingTab 
       await this.plugin.saveSettings(false);
     }));
     const sourceHeader = containerEl.createDiv({ cls: "cld-settings-heading" });
-    sourceHeader.createEl("h3", { text: "\u6211\u7684\u6587\u4EF6\u5939" });
+    new import_obsidian2.Setting(sourceHeader).setName("\u6211\u7684\u6587\u4EF6\u5939").setHeading();
     new import_obsidian2.ButtonComponent(sourceHeader).setButtonText("\u6DFB\u52A0\u6587\u4EF6\u5939").setIcon("folder-plus").onClick(async () => {
       this.plugin.settings.sources.push({
         id: `source-${Date.now()}`,
@@ -2827,8 +2827,8 @@ var ContentLibraryDashboardPlugin = class extends import_obsidian4.Plugin {
       void this.activateView();
     });
     this.addCommand({
-      id: "open-content-library-dashboard",
-      name: "Open content library dashboard",
+      id: "open-dashboard",
+      name: "Open dashboard",
       callback: () => void this.activateView()
     });
     this.addSettingTab(new ContentLibrarySettingsTab(this.app, this));
@@ -2848,7 +2848,6 @@ var ContentLibraryDashboardPlugin = class extends import_obsidian4.Plugin {
   }
   onunload() {
     if (this.refreshTimer !== null) window.clearTimeout(this.refreshTimer);
-    this.app.workspace.detachLeavesOfType(CONTENT_LIBRARY_VIEW_TYPE);
   }
   async activateView() {
     let leaf = this.app.workspace.getLeavesOfType(CONTENT_LIBRARY_VIEW_TYPE)[0];
@@ -2856,7 +2855,7 @@ var ContentLibraryDashboardPlugin = class extends import_obsidian4.Plugin {
       leaf = this.app.workspace.getLeaf("tab");
       await leaf.setViewState({ type: CONTENT_LIBRARY_VIEW_TYPE, active: true });
     }
-    this.app.workspace.revealLeaf(leaf);
+    void this.app.workspace.revealLeaf(leaf);
   }
   openSettingTab() {
     const host = this.app;

@@ -12,7 +12,7 @@ function firstString(...values: unknown[]): string {
   for (const value of values) {
     if (typeof value === "string" && value.trim()) return value.trim();
     if (Array.isArray(value)) {
-      const found = value.find((entry) => typeof entry === "string" && entry.trim());
+      const found = (value as unknown[]).find((entry: unknown) => typeof entry === "string" && entry.trim());
       if (typeof found === "string") return found.trim();
     }
   }
@@ -51,7 +51,7 @@ export class VaultContentIndexer {
       if (AUDIO_EXTENSIONS.has(file.extension.toLowerCase())) audio += 1;
       else if (file.extension.toLowerCase() === "md") {
         notes += 1;
-        const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined;
+        const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
         if (firstString(frontmatter?.playlist_url, frontmatter?.playlistUrl, frontmatter?.music_playlist)) playlists += 1;
       }
     }

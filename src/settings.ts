@@ -22,12 +22,12 @@ export class ContentLibrarySettingsTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.addClass("cld-settings");
-    containerEl.createEl("h2", { text: "内容图书馆" });
+    new Setting(containerEl).setName("内容图书馆").setHeading();
     containerEl.createEl("p", {
       text: "不需要预先创建固定文件夹。选择 Vault 里已有的文件夹即可；显示名称可以和实际路径不同。",
     });
 
-    containerEl.createEl("h3", { text: "外观" });
+    new Setting(containerEl).setName("外观").setHeading();
 
     new Setting(containerEl)
       .setName("标题")
@@ -108,7 +108,7 @@ export class ContentLibrarySettingsTab extends PluginSettingTab {
         }));
 
     const sourceHeader = containerEl.createDiv({ cls: "cld-settings-heading" });
-    sourceHeader.createEl("h3", { text: "我的文件夹" });
+    new Setting(sourceHeader).setName("我的文件夹").setHeading();
     new ButtonComponent(sourceHeader)
       .setButtonText("添加文件夹")
       .setIcon("folder-plus")

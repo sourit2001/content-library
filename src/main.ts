@@ -29,7 +29,7 @@ import {
 
 type SettingsHost = { setting?: { open(): void; openTabById(id: string): void } };
 
-export interface MusicTrack extends MusicTrackSnapshot {}
+export type MusicTrack = MusicTrackSnapshot;
 
 export interface NetEasePlaylist extends MusicCollectionSnapshot { tracks: MusicTrack[] }
 
@@ -53,8 +53,8 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
       void this.activateView();
     });
     this.addCommand({
-      id: "open-content-library-dashboard",
-      name: "Open content library dashboard",
+      id: "open-dashboard",
+      name: "Open dashboard",
       callback: () => void this.activateView(),
     });
     this.addSettingTab(new ContentLibrarySettingsTab(this.app, this));
@@ -76,7 +76,6 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
 
   override onunload(): void {
     if (this.refreshTimer !== null) window.clearTimeout(this.refreshTimer);
-    this.app.workspace.detachLeavesOfType(CONTENT_LIBRARY_VIEW_TYPE);
   }
 
   async activateView(): Promise<void> {
@@ -85,7 +84,7 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
       leaf = this.app.workspace.getLeaf("tab");
       await leaf.setViewState({ type: CONTENT_LIBRARY_VIEW_TYPE, active: true });
     }
-    this.app.workspace.revealLeaf(leaf);
+    void this.app.workspace.revealLeaf(leaf);
   }
 
   openSettingTab(): void {
