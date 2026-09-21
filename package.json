@@ -1,0 +1,22 @@
+{
+  "name": "content-library-dashboard",
+  "version": "0.1.0",
+  "description": "A visual content library dashboard for Obsidian.",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "node esbuild.config.mjs production",
+    "check": "tsc --noEmit"
+  },
+  "keywords": ["obsidian", "dashboard", "library", "podcast", "reader"],
+  "author": "Li Zhu",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "builtin-modules": "^4.0.0",
+    "esbuild": "^0.25.0",
+    "obsidian": "latest",
+    "tslib": "^2.8.0",
+    "typescript": "^5.8.0"
+  }
+}

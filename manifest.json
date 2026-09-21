@@ -1,0 +1,9 @@
+{
+  "id": "content-library-dashboard",
+  "name": "Content Library Dashboard",
+  "version": "0.1.0",
+  "minAppVersion": "1.8.7",
+  "description": "A liquid-glass home for books, podcasts, web clips, news, and any Vault folder.",
+  "author": "Li Zhu",
+  "isDesktopOnly": false
+}
