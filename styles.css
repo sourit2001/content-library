@@ -78,7 +78,52 @@
   --cld-glass-strong: color-mix(in srgb, var(--cld-card) 78%, transparent);
 }
 
-.theme-dark .cld-root:not(.cld-theme-black) {
+.cld-theme-glass {
+  color-scheme: dark;
+  --cld-ink: oklch(97% 0.006 90);
+  --cld-muted: color-mix(in srgb, var(--cld-ink) 68%, transparent);
+  --cld-bg: oklch(15% 0.028 145 / 62%);
+  --cld-card: oklch(28% 0.026 145 / 48%);
+  --cld-tone-a: oklch(84% 0.06 145);
+  --cld-tone-b: oklch(86% 0.035 190);
+  --cld-tone-c: oklch(92% 0.035 105);
+  --cld-tone-d: oklch(78% 0.04 135);
+  --cld-glass: color-mix(in srgb, var(--cld-card) 58%, transparent);
+  --cld-glass-strong: color-mix(in srgb, var(--cld-card) 72%, transparent);
+}
+.cld-root.cld-mode-dark.cld-theme-glass,
+.theme-dark .cld-root.cld-theme-glass {
+  --cld-ink: oklch(96% 0.006 90);
+  --cld-muted: color-mix(in srgb, var(--cld-ink) 54%, transparent);
+  --cld-bg: oklch(13% 0.018 145 / 54%);
+  --cld-card: oklch(42% 0.02 145 / 34%);
+  --cld-glass: color-mix(in srgb, var(--cld-card) 54%, transparent);
+  --cld-glass-strong: color-mix(in srgb, var(--cld-card) 68%, transparent);
+}
+.cld-root.cld-theme-glass {
+  background-color: color-mix(in srgb, var(--cld-bg) 58%, transparent);
+  background-image:
+    linear-gradient(135deg, rgb(8 30 22 / 68%), rgb(19 50 35 / 42%)),
+    var(--cld-glass-background, none);
+  background-attachment: fixed;
+  background-position: center top;
+  background-repeat: no-repeat;
+  background-size: auto 100vh;
+  backdrop-filter: blur(24px) saturate(125%);
+  -webkit-backdrop-filter: blur(24px) saturate(125%);
+}
+.cld-root.cld-theme-glass .cld-glass:not(.cld-hero),
+.cld-root.cld-theme-glass .cld-content-card {
+  background: color-mix(in srgb, var(--cld-card) 58%, transparent) !important;
+  border-color: color-mix(in srgb, white 22%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 22%, transparent),
+    0 12px 30px color-mix(in srgb, black 14%, transparent);
+  backdrop-filter: blur(20px) saturate(130%);
+  -webkit-backdrop-filter: blur(20px) saturate(130%);
+}
+
+.theme-dark .cld-root:not(.cld-theme-black):not(.cld-theme-glass) {
   color-scheme: dark;
   --cld-ink: oklch(96% 0.006 90);
   --cld-muted: color-mix(in srgb, var(--cld-ink) 54%, transparent);
@@ -113,6 +158,21 @@
 .theme-dark .cld-root.cld-mode-light.cld-theme-rose { --cld-bg: oklch(88% 0.14 8); --cld-card: oklch(94% 0.095 8); }
 .theme-dark .cld-root.cld-mode-light.cld-theme-black { --cld-bg: oklch(96% 0.042 132); --cld-card: oklch(98% 0.028 132); }
 
+/* Transparent glass intentionally looks identical in system, light and dark
+   modes. Keep this override after the generic mode rules. */
+.cld-root.cld-theme-glass,
+.theme-dark .cld-root.cld-theme-glass,
+.cld-root.cld-mode-light.cld-theme-glass,
+.cld-root.cld-mode-dark.cld-theme-glass {
+  color-scheme: dark;
+  --cld-ink: oklch(97% 0.006 90);
+  --cld-muted: color-mix(in srgb, var(--cld-ink) 68%, transparent);
+  --cld-bg: oklch(15% 0.028 145 / 62%);
+  --cld-card: oklch(28% 0.026 145 / 48%);
+  --cld-glass: color-mix(in srgb, var(--cld-card) 54%, transparent);
+  --cld-glass-strong: color-mix(in srgb, var(--cld-card) 68%, transparent);
+}
+
 .cld-root * { box-sizing: border-box; }
 .cld-root button,
 .cld-root select,
@@ -132,6 +192,10 @@
   box-shadow: none;
 }
 .workspace-leaf-content[data-type="content-library-dashboard-view"] .cld-root button.cld-content-card {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  justify-content: flex-start !important;
   background-color: var(--cld-glass) !important;
   background-image: none !important;
   color: var(--cld-ink) !important;
@@ -585,7 +649,8 @@
 .cld-episode-type { color: var(--cld-muted); font-size: 12px; }
 .cld-episode-tail { display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
 .cld-content-card {
-  display: block;
+  display: flex;
+  flex-direction: column;
   width: 100%;
   height: auto;
   min-width: 0;
@@ -744,11 +809,40 @@
 .cld-cover-progress { position: absolute; right: 10px; bottom: 8px; left: 10px; height: 4px; border-radius: 99px; background: color-mix(in srgb, var(--cld-ink) 15%, transparent); }
 .cld-cover-progress span { display: block; height: 100%; border-radius: inherit; background: var(--cld-ink); }
 .cld-card-copy { display: grid; gap: 3px; padding: 12px 13px 14px; }
+.cld-content-card:not(:has(.cld-card-cover)) .cld-card-copy { gap: 9px; padding: 16px 15px 15px; }
 .cld-card-title-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.cld-card-title-top {
+  order: -1;
+  align-items: flex-start !important;
+  width: 100%;
+  min-height: 57px;
+  padding: 15px 15px 0;
+  text-align: left;
+}
+.cld-card-title-top > strong {
+  display: -webkit-box;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
 .cld-card-title-row > strong { flex: 1; min-width: 0; }
 .cld-card-copy strong,
 .cld-card-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cld-card-copy small { color: var(--cld-muted); font-size: 11px; }
+.cld-card-excerpt-inline {
+  position: static;
+  display: -webkit-box;
+  margin: 0;
+  color: var(--cld-ink);
+  font-size: 15px;
+  font-weight: 450;
+  line-height: 1.55;
+  letter-spacing: -.005em;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+}
 .workspace-leaf-content[data-type="content-library-dashboard-view"] .cld-card-copy small {
   color: var(--cld-muted);
   -webkit-text-fill-color: var(--cld-muted);
@@ -1451,6 +1545,35 @@
    do not change together (split panes, sidebars, and iPad stage manager). */
 .is-mobile .workspace-leaf-content[data-type="content-library-dashboard-view"] .cld-root { padding: 7px; }
 .is-mobile .workspace-leaf-content[data-type="content-library-dashboard-view"] .cld-root { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
+.is-mobile .workspace-leaf-content[data-type="content-library-dashboard-view"] .cld-root.cld-theme-glass {
+  position: relative;
+  background-image: none;
+  background-attachment: scroll;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.is-mobile .workspace-leaf-content[data-type="content-library-dashboard-view"] .cld-root.cld-theme-glass::before {
+  content: "";
+  position: sticky;
+  z-index: 0;
+  top: 0;
+  display: block;
+  width: 100%;
+  height: 100svh;
+  margin-bottom: -100svh;
+  pointer-events: none;
+  background-color: color-mix(in srgb, var(--cld-bg) 58%, transparent);
+  background-image:
+    linear-gradient(135deg, rgb(8 30 22 / 68%), rgb(19 50 35 / 42%)),
+    var(--cld-glass-background, none);
+  background-position: center top;
+  background-repeat: no-repeat;
+  background-size: auto 100svh;
+}
+.is-mobile .workspace-leaf-content[data-type="content-library-dashboard-view"] .cld-root.cld-theme-glass > * {
+  position: relative;
+  z-index: 1;
+}
 .is-mobile .workspace-leaf-content[data-type="content-library-dashboard-view"] .cld-mini-player { display: flex; }
 .is-mobile .workspace-leaf-content[data-type="content-library-dashboard-view"] .cld-layout { grid-template-columns: 1fr; }
 .is-mobile .workspace-leaf-content[data-type="content-library-dashboard-view"] .cld-layout.is-music { grid-template-columns: 1fr; }

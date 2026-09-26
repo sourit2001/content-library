@@ -6,13 +6,15 @@ An independent Obsidian dashboard for books, podcasts, web clips, X briefs, cust
 
 - Three-column liquid-glass layout on desktop and a compact single-column mobile layout.
 - Auto-detects common content folders without moving or duplicating notes.
-- Supports five color styles: grass, blue, pink, rose, and black.
+- Supports six color styles: grass, blue, pink, rose, black, and transparent glass.
+- Adds a transparent liquid-glass style with a bundled green background, consistent appearance in light and dark mode, and stable mobile scrolling.
 - Uses frontmatter such as `title`, `author`, `cover`, `source`, `audio`, and `progress` when available.
 - Opens Markdown inside a focused reading view.
 - Opens Weave EPUB Reader and VaultCast through their Obsidian commands when installed.
 - Plays linked local MP3, M4A, WAV, FLAC, and AAC files.
 - Writes reading annotations and podcast moments back to ordinary Markdown notes.
 - Lets every source folder and content item use a local or remote custom cover.
+- Places card titles consistently at the top and shows text previews directly below titles when no cover is available.
 
 ## Getting started
 

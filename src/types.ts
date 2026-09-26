@@ -1,6 +1,6 @@
 import type { TFile } from "obsidian";
 
-export type DashboardTheme = "grass" | "blue" | "pink" | "rose" | "black";
+export type DashboardTheme = "grass" | "blue" | "pink" | "rose" | "black" | "glass";
 export type ThemeMode = "system" | "light" | "dark";
 export type AnnotationHighlight = "yellow" | "orange" | "blue" | "pink";
 export type SourceKind = "book" | "podcast" | "music" | "x" | "news" | "clip" | "generic";
@@ -93,6 +93,7 @@ export const THEME_LABELS: Record<DashboardTheme, string> = {
   pink: "樱花粉",
   rose: "玫瑰红",
   black: "曜石黑",
+  glass: "透明玻璃",
 };
 
 export const SOURCE_KIND_LABELS: Record<SourceKind, string> = {

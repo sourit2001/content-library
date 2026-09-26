@@ -95,7 +95,7 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
 
   async loadSettings(): Promise<void> {
     const loaded = (await this.loadData()) as Partial<DashboardSettings> | null;
-    const theme = (["grass", "blue", "pink", "rose", "black"] as DashboardTheme[]).includes(loaded?.theme as DashboardTheme)
+    const theme = (["grass", "blue", "pink", "rose", "black", "glass"] as DashboardTheme[]).includes(loaded?.theme as DashboardTheme)
       ? (loaded?.theme as DashboardTheme)
       : DEFAULT_SETTINGS.theme;
     this.settings = {

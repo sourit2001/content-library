@@ -11,6 +11,7 @@ import {
   WorkspaceLeaf,
   setIcon,
 } from "obsidian";
+import glassBackground from "../assets/cld-glass-green-bg.jpg";
 import type ContentLibraryDashboardPlugin from "./main";
 import {
   SOURCE_KIND_LABELS,
@@ -110,6 +111,9 @@ export class ContentLibraryView extends ItemView {
     root.empty();
     root.addClass("cld-view-content");
     const shell = root.createDiv({ cls: `cld-root cld-theme-${this.plugin.settings.theme} cld-mode-${this.plugin.settings.themeMode} cld-annotation-${this.plugin.settings.annotationHighlight}` });
+    if (this.plugin.settings.theme === "glass") {
+      shell.style.setProperty("--cld-glass-background", `url("${glassBackground}")`);
+    }
     const podcastHome = !this.detailOpen && this.isPodcastMode();
     const musicHome = !this.detailOpen && this.isMusicMode();
     const layout = shell.createDiv({ cls: `cld-layout${this.detailOpen ? " is-detail" : ""}${podcastHome ? " is-podcast" : ""}${musicHome ? " is-music" : ""}` });
@@ -776,41 +780,43 @@ export class ContentLibraryView extends ItemView {
       cls: `cld-content-card cld-glass cld-kind-${item.kind}${this.selected?.id === item.id ? " is-selected" : ""}`,
       attr: { type: "button", "aria-label": `${item.title}，${this.plugin.indexer.kindLabel(item.kind)}` },
     });
-    const cover = button.createDiv({ cls: "cld-card-cover" });
+    const titleRow = button.createDiv({ cls: "cld-card-title-row cld-card-title-top" });
+    titleRow.createEl("strong", { text: item.title });
+    this.renderContentStatus(titleRow, item);
     const override = this.plugin.settings.coverOverrides[item.file.path] || "";
     const coverUrl = this.plugin.indexer.resolveResource(override, item.file) || item.cover;
     if (coverUrl) {
+      const cover = button.createDiv({ cls: "cld-card-cover" });
       cover.addClass("has-image");
       cover.style.backgroundImage = `url("${coverUrl.replace(/"/g, "%22")}")`;
-    } else {
-      cover.addClass("is-summary");
-      const meta = cover.createDiv({ cls: "cld-card-cover-meta" });
-      const icon = meta.createSpan({ cls: "cld-cover-icon" });
-      setIcon(icon, item.source.icon || "file-text");
-      meta.createEl("small", { text: this.plugin.indexer.kindLabel(item.kind) });
-      const excerpt = cover.createEl("p", { cls: "cld-card-excerpt", text: this.cardExcerptFallback(item) });
-      void this.hydrateCardExcerpt(excerpt, item);
     }
-    if (item.kind === "podcast") {
+    if (item.kind === "podcast" && coverUrl) {
+      const cover = button.querySelector<HTMLElement>(".cld-card-cover");
+      if (!cover) return;
       cover.addClass("has-podcast-badge");
       const badge = cover.createDiv({ cls: "cld-podcast-card-badge" });
       const badgeIcon = badge.createSpan();
       setIcon(badgeIcon, "play");
       badge.createSpan({ text: "播客" });
     }
-    if (item.externalUrl) {
+    if (item.externalUrl && coverUrl) {
+      const cover = button.querySelector<HTMLElement>(".cld-card-cover");
+      if (!cover) return;
       const host = cover.createEl("small", { cls: "cld-web-host", text: webHost(item.externalUrl) });
       setIcon(host.createSpan(), "external-link");
       void this.hydrateWebCard(cover, item.externalUrl, coverUrl);
     }
-    if (item.progress > 0) {
+    if (item.progress > 0 && coverUrl) {
+      const cover = button.querySelector<HTMLElement>(".cld-card-cover");
+      if (!cover) return;
       const progress = cover.createDiv({ cls: "cld-cover-progress" });
       progress.createSpan().style.width = `${item.progress}%`;
     }
     const copy = button.createDiv({ cls: "cld-card-copy" });
-    const titleRow = copy.createDiv({ cls: "cld-card-title-row" });
-    titleRow.createEl("strong", { text: item.title });
-    this.renderContentStatus(titleRow, item);
+    if (!coverUrl) {
+      const excerpt = copy.createEl("p", { cls: "cld-card-excerpt cld-card-excerpt-inline", text: this.cardExcerptFallback(item) });
+      void this.hydrateCardExcerpt(excerpt, item);
+    }
     copy.createEl("small", { text: this.contentMeta(item) });
     button.addEventListener("click", () => {
       void this.plugin.recordView(item.file);
