@@ -123,7 +123,8 @@
   -webkit-backdrop-filter: blur(20px) saturate(130%);
 }
 
-.theme-dark .cld-root:not(.cld-theme-black):not(.cld-theme-glass) {
+/* Keep the system dark fallback less specific than each theme palette. */
+.theme-dark .cld-root:where(:not(.cld-theme-black):not(.cld-theme-glass)) {
   color-scheme: dark;
   --cld-ink: oklch(96% 0.006 90);
   --cld-muted: color-mix(in srgb, var(--cld-ink) 54%, transparent);
