@@ -886,7 +886,7 @@ var ContentLibraryView = class _ContentLibraryView extends import_obsidian3.Item
   }
   renderHomeBanner(main, source, itemCount, podcast) {
     const hero = main.createEl("section", { cls: "cld-hero cld-glass" });
-    const banner = this.plugin.indexer.resolveResource(this.plugin.settings.bannerPath);
+    const banner = this.plugin.settings.theme === "glass" ? this.plugin.indexer.resolveResource(this.plugin.settings.bannerPath) : "";
     if (banner) {
       hero.addClass("has-image");
       hero.style.backgroundImage = `url("${banner.replace(/"/g, "%22")}")`;
