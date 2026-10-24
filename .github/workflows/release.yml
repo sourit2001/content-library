@@ -1,0 +1,42 @@
+name: Release plugin
+
+# Push a tag that matches manifest.json's version (e.g. 0.2.0, no "v") to
+# build the plugin and publish a GitHub release with main.js, manifest.json
+# and styles.css — what Obsidian's community plugin store downloads.
+# Release notes come from .github/release-notes/<tag>.md when present.
+on:
+  push:
+    tags: ["*.*.*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - name: Check tag matches manifest version
+        run: |
+          version=$(node -p "require('./manifest.json').version")
+          if [ "$version" != "${GITHUB_REF_NAME}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match manifest.json version ${version}" >&2
+            exit 1
+          fi
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes=".github/release-notes/${GITHUB_REF_NAME}.md"
+          if [ -f "$notes" ]; then
+            gh release create "$GITHUB_REF_NAME" main.js manifest.json styles.css --title "$GITHUB_REF_NAME" --notes-file "$notes"
+          else
+            gh release create "$GITHUB_REF_NAME" main.js manifest.json styles.css --title "$GITHUB_REF_NAME" --generate-notes
+          fi
