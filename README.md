@@ -7,7 +7,8 @@ An independent Obsidian dashboard for books, podcasts, web clips, X briefs, cust
 - Three-column liquid-glass layout on desktop and a compact single-column mobile layout.
 - Auto-detects common content folders without moving or duplicating notes.
 - Supports six color styles: grass, blue, pink, rose, black, and forest glass.
-- One-click theme packs with palettes, backgrounds, and banners, including optional premium packs.
+- One-click theme packs with palettes, backgrounds, and banners — all free.
+- Ambient sound: three packs come with a looping background soundscape (rain, evening birdsong, late-night city) you can play while you read.
 - Adds a forest liquid-glass style with a bundled green background, consistent appearance in light and dark mode, and stable mobile scrolling.
 - Uses frontmatter such as `title`, `author`, `cover`, `source`, `audio`, and `progress` when available.
 - Opens Markdown inside a focused reading view.
@@ -64,18 +65,38 @@ in one click. Open them from **Settings → Theme packs → Browse theme packs**
 
 - Tap a pack's thumbnail or **Preview** to see a full dashboard mockup before
   downloading.
-- Some premium packs include a looping ambient sound (rain, evening birds,
-  distant city). A sound button and volume slider appear in the top bar; the
-  sound pauses automatically while a podcast or other audio plays.
-- Free packs are available to everyone. Premium packs are unlocked with a
-  license key bought separately; the plugin itself stays free and fully usable
-  without them. Premium packs may be offered free for a limited time — packs
-  installed during that window stay usable afterwards.
+- Every pack is free, including the premium series and the Forest glass theme.
 - Downloaded pack images are stored in the plugin folder
   (`.obsidian/plugins/content-library-dashboard/packs/`), never in your notes.
   Pack palettes are saved in `data.json`, and missing images are downloaded
   again automatically on a newly synced device.
 - To publish packs, see [`packs/README.md`](packs/README.md).
+
+### Ambient sound / 环境白噪音
+
+Three packs include a looping ambient soundscape — handy as background white
+noise while you read or write. 三套素材包自带循环环境音，适合阅读、写作时当背景白噪音。
+
+| Pack 素材包 | Sound 声音 |
+| --- | --- |
+| City Lights 城市夜灯 | Rain on the window 窗边雨声 |
+| Rose Dusk 玫瑰晚霞 | Evening birdsong 傍晚鸟鸣 |
+| Crimson City 绯红都市 | Late-night city traffic 深夜城市车流 |
+
+After applying one of these packs, a sound button and a volume slider appear
+in the dashboard's top bar. The sound fades in and out smoothly, and pauses
+automatically while a podcast or other audio is playing.
+应用这几套素材包后，仪表盘顶栏会出现声音按钮和音量滑块；播放播客时环境音会自动暂停。
+In the theme pack store these packs are marked **Ambient sound**.
+在素材包商店里，这几套会标注「含环境音」。
+
+All sounds are CC0 recordings from Freesound — see [`packs/README.md`](packs/README.md#ambient-sounds).
+
+### Support the author / 支持作者
+
+The plugin and every theme pack are free. If it helps you, the **Support the
+author** card at the top of the plugin settings (and the theme pack store) has
+WeChat Pay and Alipay tip codes. 插件和素材包都是免费的；如果对你有帮助，可以在插件设置顶部的「支持作者」卡片里扫码请我喝杯奶茶。
 
 ### Network use
 
@@ -84,8 +105,6 @@ The plugin only connects to the network for features you use:
 - **Theme packs**: reads the pack catalog, preview images, backgrounds and
   ambient sounds from this GitHub repository through `cdn.jsdelivr.net` and
   `raw.githubusercontent.com`.
-- **Premium pack activation**: sends the license key you enter and the product
-  id to `api.gumroad.com` to verify the purchase.
 - **Music and web previews**: fetches playlist and link metadata you add.
 
 No telemetry or analytics are collected.

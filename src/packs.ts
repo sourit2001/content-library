@@ -229,6 +229,18 @@ export function packDescription(pack: ThemePack): string {
   return pack.descriptionEn || PACK_EN[pack.id]?.[1] || pack.description;
 }
 
+/** What a pack's ambient loop sounds like, keyed by pack id; unknown packs just say "ambient sound". */
+const AMBIENT_SOUNDS: Record<string, string> = {
+  "city-lights": "窗边雨声",
+  "rose-dusk": "傍晚鸟鸣",
+  "crimson-city": "深夜城市车流",
+};
+
+function ambientLabel(pack: ThemePack): string {
+  const sound = AMBIENT_SOUNDS[pack.id];
+  return sound ? t("含环境音 · {sound}", { sound: t(sound) }) : t("含环境音");
+}
+
 /** True while a premium pack is in its limited-time free window. */
 export function isLimitedFree(pack: ThemePack): boolean {
   const until = pack.premium?.freeUntil ? Date.parse(pack.premium.freeUntil) : NaN;
@@ -641,7 +653,7 @@ export class ThemePackStoreModal extends Modal {
     if (pack.ambient) {
       const chip = body.createDiv({ cls: "cld-pack-ambient-chip" });
       setIcon(chip.createSpan(), "audio-lines");
-      chip.createSpan({ text: t("含环境音") });
+      chip.createSpan({ text: ambientLabel(pack) });
     }
     if (pack.swatches?.length) {
       const swatches = body.createDiv({ cls: "cld-pack-swatches" });
@@ -720,7 +732,7 @@ class PackPreviewModal extends Modal {
     if (pack.ambient) {
       const chip = copy.createDiv({ cls: "cld-pack-ambient-chip" });
       setIcon(chip.createSpan(), "audio-lines");
-      chip.createSpan({ text: t("含环境音") });
+      chip.createSpan({ text: ambientLabel(pack) });
     }
     copy.createEl("small", { cls: "cld-pack-preview-note", text: t("预览图为示意效果，实际内容以你的笔记为准。") });
     const actions = info.createDiv({ cls: "cld-pack-actions" });

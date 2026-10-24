@@ -379,7 +379,11 @@ var EN = {
   "\u5FAE\u4FE1": "WeChat Pay",
   "\u652F\u4ED8\u5B9D": "Alipay",
   "\u7528\u624B\u673A\u626B\u7801\u5373\u53EF\uFF0C\u91D1\u989D\u968F\u610F\u3002\u8C22\u8C22\u4F60\u7684\u652F\u6301\uFF01": "Scan with your phone and pay any amount. Thank you for your support!",
-  "\u652F\u6301\u4F5C\u8005 \u{1F9CB}": "Support the author \u{1F9CB}"
+  "\u652F\u6301\u4F5C\u8005 \u{1F9CB}": "Support the author \u{1F9CB}",
+  "\u542B\u73AF\u5883\u97F3 \xB7 {sound}": "Ambient sound \xB7 {sound}",
+  "\u7A97\u8FB9\u96E8\u58F0": "rain on the window",
+  "\u508D\u665A\u9E1F\u9E23": "evening birdsong",
+  "\u6DF1\u591C\u57CE\u5E02\u8F66\u6D41": "late-night city traffic"
 };
 
 // src/i18n.ts
@@ -945,6 +949,15 @@ function packDescription(pack) {
   if (!isEnglish()) return pack.description;
   return pack.descriptionEn || PACK_EN[pack.id]?.[1] || pack.description;
 }
+var AMBIENT_SOUNDS = {
+  "city-lights": "\u7A97\u8FB9\u96E8\u58F0",
+  "rose-dusk": "\u508D\u665A\u9E1F\u9E23",
+  "crimson-city": "\u6DF1\u591C\u57CE\u5E02\u8F66\u6D41"
+};
+function ambientLabel(pack) {
+  const sound = AMBIENT_SOUNDS[pack.id];
+  return sound ? t("\u542B\u73AF\u5883\u97F3 \xB7 {sound}", { sound: t(sound) }) : t("\u542B\u73AF\u5883\u97F3");
+}
 function isLimitedFree(pack) {
   const until = pack.premium?.freeUntil ? Date.parse(pack.premium.freeUntil) : NaN;
   return !Number.isNaN(until) && Date.now() < until;
@@ -1309,7 +1322,7 @@ var ThemePackStoreModal = class extends import_obsidian3.Modal {
     if (pack.ambient) {
       const chip = body.createDiv({ cls: "cld-pack-ambient-chip" });
       (0, import_obsidian3.setIcon)(chip.createSpan(), "audio-lines");
-      chip.createSpan({ text: t("\u542B\u73AF\u5883\u97F3") });
+      chip.createSpan({ text: ambientLabel(pack) });
     }
     if (pack.swatches?.length) {
       const swatches = body.createDiv({ cls: "cld-pack-swatches" });
@@ -1388,7 +1401,7 @@ var PackPreviewModal = class extends import_obsidian3.Modal {
     if (pack.ambient) {
       const chip = copy.createDiv({ cls: "cld-pack-ambient-chip" });
       (0, import_obsidian3.setIcon)(chip.createSpan(), "audio-lines");
-      chip.createSpan({ text: t("\u542B\u73AF\u5883\u97F3") });
+      chip.createSpan({ text: ambientLabel(pack) });
     }
     copy.createEl("small", { cls: "cld-pack-preview-note", text: t("\u9884\u89C8\u56FE\u4E3A\u793A\u610F\u6548\u679C\uFF0C\u5B9E\u9645\u5185\u5BB9\u4EE5\u4F60\u7684\u7B14\u8BB0\u4E3A\u51C6\u3002") });
     const actions = info.createDiv({ cls: "cld-pack-actions" });

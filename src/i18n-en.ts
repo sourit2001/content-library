@@ -351,4 +351,8 @@ export const EN: Record<string, string> = {
   "支付宝": "Alipay",
   "用手机扫码即可，金额随意。谢谢你的支持！": "Scan with your phone and pay any amount. Thank you for your support!",
   "支持作者 🧋": "Support the author 🧋",
+  "含环境音 · {sound}": "Ambient sound · {sound}",
+  "窗边雨声": "rain on the window",
+  "傍晚鸟鸣": "evening birdsong",
+  "深夜城市车流": "late-night city traffic",
 };
