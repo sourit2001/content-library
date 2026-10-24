@@ -37,6 +37,7 @@
     "provider": "gumroad",
     "productId": "REPLACE_WITH_GUMROAD_PRODUCT_ID",
     "buyUrl": "https://gumroad.com/l/REPLACE_ME",
-    "price": "¥18"
+    "price": "¥18",
+    "freeUntil": "2026-11-07T23:59:59+08:00"
   }
 }
