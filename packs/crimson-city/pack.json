@@ -1,0 +1,42 @@
+{
+  "id": "crimson-city",
+  "name": "绯红都市",
+  "description": "绯红落日下的城市天际线与沙发角落。",
+  "author": "Li Zhu",
+  "version": "1.0.0",
+  "base": "glass",
+  "scheme": "dark",
+  "preview": "preview.jpg",
+  "background": "background.jpg",
+  "banner": "banner.jpg",
+  "backgroundSize": "cover",
+  "overlay": "linear-gradient(135deg, rgb(36 6 10 / 54%), rgb(90 20 30 / 24%))",
+  "annotationHighlight": "pink",
+  "swatches": [
+    "#250706",
+    "#842b38",
+    "#e03a44",
+    "#f95645"
+  ],
+  "tags": [
+    "精品"
+  ],
+  "palette": {
+    "light": {
+      "ink": "oklch(97% 0.01 15)",
+      "bg": "oklch(16% 0.060 15 / 58%)",
+      "card": "oklch(30% 0.060 15 / 44%)",
+      "tone-a": "oklch(80% 0.132 15)",
+      "tone-b": "oklch(86% 0.084 40)",
+      "tone-c": "oklch(92% 0.066 75)",
+      "tone-d": "oklch(72% 0.108 0)",
+      "accent": "oklch(80% 0.120 15)"
+    }
+  },
+  "premium": {
+    "provider": "gumroad",
+    "productId": "REPLACE_WITH_GUMROAD_PRODUCT_ID",
+    "buyUrl": "https://gumroad.com/l/REPLACE_ME",
+    "price": "¥18"
+  }
+}

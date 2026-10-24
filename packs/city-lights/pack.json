@@ -1,0 +1,42 @@
+{
+  "id": "city-lights",
+  "name": "城市夜灯",
+  "description": "深夜书桌、烛光与窗外的城市灯海。",
+  "author": "Li Zhu",
+  "version": "1.0.0",
+  "base": "glass",
+  "scheme": "dark",
+  "preview": "preview.jpg",
+  "background": "background.jpg",
+  "banner": "banner.jpg",
+  "backgroundSize": "cover",
+  "overlay": "linear-gradient(135deg, rgb(12 8 4 / 46%), rgb(40 24 12 / 22%))",
+  "annotationHighlight": "orange",
+  "swatches": [
+    "#130904",
+    "#452715",
+    "#a4602f",
+    "#dd9756"
+  ],
+  "tags": [
+    "精品"
+  ],
+  "palette": {
+    "light": {
+      "ink": "oklch(97% 0.01 60)",
+      "bg": "oklch(16% 0.030 60 / 58%)",
+      "card": "oklch(30% 0.030 60 / 44%)",
+      "tone-a": "oklch(80% 0.066 60)",
+      "tone-b": "oklch(86% 0.042 85)",
+      "tone-c": "oklch(92% 0.033 120)",
+      "tone-d": "oklch(72% 0.054 45)",
+      "accent": "oklch(80% 0.120 60)"
+    }
+  },
+  "premium": {
+    "provider": "gumroad",
+    "productId": "REPLACE_WITH_GUMROAD_PRODUCT_ID",
+    "buyUrl": "https://gumroad.com/l/REPLACE_ME",
+    "price": "¥18"
+  }
+}

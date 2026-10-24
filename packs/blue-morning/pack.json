@@ -1,0 +1,36 @@
+{
+  "id": "blue-morning",
+  "name": "蓝调湖晨",
+  "description": "薄雾湖面与绣球花，清爽安静的蓝色清晨。",
+  "author": "Li Zhu",
+  "version": "1.0.0",
+  "base": "glass",
+  "scheme": "dark",
+  "preview": "preview.jpg",
+  "background": "background.jpg",
+  "banner": "banner.jpg",
+  "backgroundSize": "cover",
+  "overlay": "linear-gradient(135deg, rgb(14 26 42 / 56%), rgb(30 52 76 / 28%))",
+  "annotationHighlight": "blue",
+  "swatches": [
+    "#d2dbe6",
+    "#9aafc6",
+    "#6b8cae",
+    "#4c6b86"
+  ],
+  "tags": [
+    "免费"
+  ],
+  "palette": {
+    "light": {
+      "ink": "oklch(97% 0.01 245)",
+      "bg": "oklch(16% 0.040 245 / 58%)",
+      "card": "oklch(30% 0.040 245 / 44%)",
+      "tone-a": "oklch(80% 0.088 245)",
+      "tone-b": "oklch(86% 0.056 270)",
+      "tone-c": "oklch(92% 0.044 305)",
+      "tone-d": "oklch(72% 0.072 230)",
+      "accent": "oklch(80% 0.120 245)"
+    }
+  }
+}

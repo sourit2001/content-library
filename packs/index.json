@@ -1,0 +1,239 @@
+{
+  "version": 1,
+  "packs": [
+    {
+      "id": "sakura-morning",
+      "name": "樱花晨光",
+      "description": "樱花窗边的清晨，奶白与浅粉的柔光。",
+      "author": "Li Zhu",
+      "version": "1.0.0",
+      "base": "glass",
+      "scheme": "dark",
+      "preview": "preview.jpg",
+      "background": "background.jpg",
+      "banner": "banner.jpg",
+      "backgroundSize": "cover",
+      "overlay": "linear-gradient(135deg, rgb(48 26 20 / 52%), rgb(80 44 36 / 26%))",
+      "annotationHighlight": "pink",
+      "swatches": [
+        "#fae1ca",
+        "#e4beaa",
+        "#c9a08d",
+        "#876443"
+      ],
+      "tags": [
+        "免费"
+      ],
+      "palette": {
+        "light": {
+          "ink": "oklch(97% 0.01 20)",
+          "bg": "oklch(16% 0.035 20 / 58%)",
+          "card": "oklch(30% 0.035 20 / 44%)",
+          "tone-a": "oklch(80% 0.077 20)",
+          "tone-b": "oklch(86% 0.049 45)",
+          "tone-c": "oklch(92% 0.039 80)",
+          "tone-d": "oklch(72% 0.063 5)",
+          "accent": "oklch(80% 0.120 20)"
+        }
+      }
+    },
+    {
+      "id": "blue-morning",
+      "name": "蓝调湖晨",
+      "description": "薄雾湖面与绣球花，清爽安静的蓝色清晨。",
+      "author": "Li Zhu",
+      "version": "1.0.0",
+      "base": "glass",
+      "scheme": "dark",
+      "preview": "preview.jpg",
+      "background": "background.jpg",
+      "banner": "banner.jpg",
+      "backgroundSize": "cover",
+      "overlay": "linear-gradient(135deg, rgb(14 26 42 / 56%), rgb(30 52 76 / 28%))",
+      "annotationHighlight": "blue",
+      "swatches": [
+        "#d2dbe6",
+        "#9aafc6",
+        "#6b8cae",
+        "#4c6b86"
+      ],
+      "tags": [
+        "免费"
+      ],
+      "palette": {
+        "light": {
+          "ink": "oklch(97% 0.01 245)",
+          "bg": "oklch(16% 0.040 245 / 58%)",
+          "card": "oklch(30% 0.040 245 / 44%)",
+          "tone-a": "oklch(80% 0.088 245)",
+          "tone-b": "oklch(86% 0.056 270)",
+          "tone-c": "oklch(92% 0.044 305)",
+          "tone-d": "oklch(72% 0.072 230)",
+          "accent": "oklch(80% 0.120 245)"
+        }
+      }
+    },
+    {
+      "id": "moonlit-lake",
+      "name": "月光湖畔",
+      "description": "满月下的湖与远山，黑白银灰的夜。",
+      "author": "Li Zhu",
+      "version": "1.0.0",
+      "base": "glass",
+      "scheme": "dark",
+      "preview": "preview.jpg",
+      "background": "background.jpg",
+      "banner": "banner.jpg",
+      "backgroundSize": "cover",
+      "overlay": "linear-gradient(135deg, rgb(6 8 10 / 46%), rgb(30 34 40 / 22%))",
+      "annotationHighlight": "blue",
+      "swatches": [
+        "#0b0e0a",
+        "#2d3135",
+        "#706a66",
+        "#b7a89b"
+      ],
+      "tags": [
+        "免费"
+      ],
+      "palette": {
+        "light": {
+          "ink": "oklch(97% 0.01 250)",
+          "bg": "oklch(16% 0.012 250 / 58%)",
+          "card": "oklch(30% 0.012 250 / 44%)",
+          "tone-a": "oklch(80% 0.026 250)",
+          "tone-b": "oklch(86% 0.017 275)",
+          "tone-c": "oklch(92% 0.013 310)",
+          "tone-d": "oklch(72% 0.022 235)",
+          "accent": "oklch(80% 0.120 250)"
+        }
+      }
+    },
+    {
+      "id": "rose-dusk",
+      "name": "玫瑰晚霞",
+      "description": "玫瑰花窗外的湖光晚霞，温暖的珊瑚色。",
+      "author": "Li Zhu",
+      "version": "1.0.0",
+      "base": "glass",
+      "scheme": "dark",
+      "preview": "preview.jpg",
+      "background": "background.jpg",
+      "banner": "banner.jpg",
+      "backgroundSize": "cover",
+      "overlay": "linear-gradient(135deg, rgb(40 16 12 / 54%), rgb(90 40 30 / 24%))",
+      "annotationHighlight": "orange",
+      "swatches": [
+        "#2d1710",
+        "#7f4b43",
+        "#e09078",
+        "#f9b990"
+      ],
+      "tags": [
+        "精品"
+      ],
+      "palette": {
+        "light": {
+          "ink": "oklch(97% 0.01 30)",
+          "bg": "oklch(16% 0.050 30 / 58%)",
+          "card": "oklch(30% 0.050 30 / 44%)",
+          "tone-a": "oklch(80% 0.110 30)",
+          "tone-b": "oklch(86% 0.070 55)",
+          "tone-c": "oklch(92% 0.055 90)",
+          "tone-d": "oklch(72% 0.090 15)",
+          "accent": "oklch(80% 0.120 30)"
+        }
+      },
+      "premium": {
+        "provider": "gumroad",
+        "productId": "REPLACE_WITH_GUMROAD_PRODUCT_ID",
+        "buyUrl": "https://gumroad.com/l/REPLACE_ME",
+        "price": "¥18"
+      }
+    },
+    {
+      "id": "city-lights",
+      "name": "城市夜灯",
+      "description": "深夜书桌、烛光与窗外的城市灯海。",
+      "author": "Li Zhu",
+      "version": "1.0.0",
+      "base": "glass",
+      "scheme": "dark",
+      "preview": "preview.jpg",
+      "background": "background.jpg",
+      "banner": "banner.jpg",
+      "backgroundSize": "cover",
+      "overlay": "linear-gradient(135deg, rgb(12 8 4 / 46%), rgb(40 24 12 / 22%))",
+      "annotationHighlight": "orange",
+      "swatches": [
+        "#130904",
+        "#452715",
+        "#a4602f",
+        "#dd9756"
+      ],
+      "tags": [
+        "精品"
+      ],
+      "palette": {
+        "light": {
+          "ink": "oklch(97% 0.01 60)",
+          "bg": "oklch(16% 0.030 60 / 58%)",
+          "card": "oklch(30% 0.030 60 / 44%)",
+          "tone-a": "oklch(80% 0.066 60)",
+          "tone-b": "oklch(86% 0.042 85)",
+          "tone-c": "oklch(92% 0.033 120)",
+          "tone-d": "oklch(72% 0.054 45)",
+          "accent": "oklch(80% 0.120 60)"
+        }
+      },
+      "premium": {
+        "provider": "gumroad",
+        "productId": "REPLACE_WITH_GUMROAD_PRODUCT_ID",
+        "buyUrl": "https://gumroad.com/l/REPLACE_ME",
+        "price": "¥18"
+      }
+    },
+    {
+      "id": "crimson-city",
+      "name": "绯红都市",
+      "description": "绯红落日下的城市天际线与沙发角落。",
+      "author": "Li Zhu",
+      "version": "1.0.0",
+      "base": "glass",
+      "scheme": "dark",
+      "preview": "preview.jpg",
+      "background": "background.jpg",
+      "banner": "banner.jpg",
+      "backgroundSize": "cover",
+      "overlay": "linear-gradient(135deg, rgb(36 6 10 / 54%), rgb(90 20 30 / 24%))",
+      "annotationHighlight": "pink",
+      "swatches": [
+        "#250706",
+        "#842b38",
+        "#e03a44",
+        "#f95645"
+      ],
+      "tags": [
+        "精品"
+      ],
+      "palette": {
+        "light": {
+          "ink": "oklch(97% 0.01 15)",
+          "bg": "oklch(16% 0.060 15 / 58%)",
+          "card": "oklch(30% 0.060 15 / 44%)",
+          "tone-a": "oklch(80% 0.132 15)",
+          "tone-b": "oklch(86% 0.084 40)",
+          "tone-c": "oklch(92% 0.066 75)",
+          "tone-d": "oklch(72% 0.108 0)",
+          "accent": "oklch(80% 0.120 15)"
+        }
+      },
+      "premium": {
+        "provider": "gumroad",
+        "productId": "REPLACE_WITH_GUMROAD_PRODUCT_ID",
+        "buyUrl": "https://gumroad.com/l/REPLACE_ME",
+        "price": "¥18"
+      }
+    }
+  ]
+}

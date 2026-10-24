@@ -1,0 +1,36 @@
+{
+  "id": "sakura-morning",
+  "name": "樱花晨光",
+  "description": "樱花窗边的清晨，奶白与浅粉的柔光。",
+  "author": "Li Zhu",
+  "version": "1.0.0",
+  "base": "glass",
+  "scheme": "dark",
+  "preview": "preview.jpg",
+  "background": "background.jpg",
+  "banner": "banner.jpg",
+  "backgroundSize": "cover",
+  "overlay": "linear-gradient(135deg, rgb(48 26 20 / 52%), rgb(80 44 36 / 26%))",
+  "annotationHighlight": "pink",
+  "swatches": [
+    "#fae1ca",
+    "#e4beaa",
+    "#c9a08d",
+    "#876443"
+  ],
+  "tags": [
+    "免费"
+  ],
+  "palette": {
+    "light": {
+      "ink": "oklch(97% 0.01 20)",
+      "bg": "oklch(16% 0.035 20 / 58%)",
+      "card": "oklch(30% 0.035 20 / 44%)",
+      "tone-a": "oklch(80% 0.077 20)",
+      "tone-b": "oklch(86% 0.049 45)",
+      "tone-c": "oklch(92% 0.039 80)",
+      "tone-d": "oklch(72% 0.063 5)",
+      "accent": "oklch(80% 0.120 20)"
+    }
+  }
+}
