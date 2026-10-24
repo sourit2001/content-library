@@ -2,6 +2,8 @@
 
 An independent Obsidian dashboard for books, podcasts, web clips, X briefs, custom news, and any folder in a Vault.
 
+![Theme pack store — every pack is free / 素材包商店，全部免费](https://cdn.jsdelivr.net/gh/sourit2001/content-library@main/docs/images/theme-pack-store.jpg)
+
 ## What it does
 
 - Three-column liquid-glass layout on desktop and a compact single-column mobile layout.
@@ -66,6 +68,7 @@ in one click. Open them from **Settings → Theme packs → Browse theme packs**
 - Tap a pack's thumbnail or **Preview** to see a full dashboard mockup before
   downloading.
 - Every pack is free, including the premium series and the Forest glass theme.
+  Packs with ambient sound are marked in the store (see below).
 - Downloaded pack images are stored in the plugin folder
   (`.obsidian/plugins/content-library-dashboard/packs/`), never in your notes.
   Pack palettes are saved in `data.json`, and missing images are downloaded
