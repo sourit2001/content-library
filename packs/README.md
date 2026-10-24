@@ -52,3 +52,21 @@ Premium images hosted in this public repository can be downloaded by anyone who
 finds the URL; the license only gates the in-app one-click install. To protect
 them, host premium files elsewhere and check the `X-License-Key` header the
 plugin sends with each premium file request.
+
+## Ambient sounds
+
+Premium packs may include `ambient.mp3`, a loop the dashboard plays with a
+crossfade (volume control in the top bar; it pauses while a podcast plays).
+Place the processed file in the pack folder and rerun the build script — it
+adds `"ambient": "ambient.mp3"` automatically. Bump the pack `version` so
+installed users can update.
+
+Processing: trim, match loudness to about −24 LUFS, encode MP3 96 kbps stereo.
+
+All current sounds are CC0 (public domain) recordings from Freesound:
+
+| pack | sound | author |
+| --- | --- | --- |
+| city-lights | [Rain_Hitting_Window_9](https://freesound.org/people/SignatureSoundsOrg/sounds/869851/) | SignatureSoundsOrg |
+| rose-dusk | [Ambient Birds Field Evening](https://freesound.org/people/Salom%C3%A9_Lubczanski/sounds/733667/) | Salomé_Lubczanski |
+| crimson-city | [Downtown LA, Little Tokyo, late night semi distant traffic](https://freesound.org/people/janbezouska/sounds/330427/) | janbezouska (high/low-passed) |

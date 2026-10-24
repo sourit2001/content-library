@@ -3,7 +3,7 @@
   "name": "绯红都市",
   "description": "绯红落日下的城市天际线与沙发角落。",
   "author": "Li Zhu",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "base": "glass",
   "scheme": "dark",
   "preview": "preview.jpg",
@@ -33,6 +33,7 @@
       "accent": "oklch(80% 0.120 15)"
     }
   },
+  "ambient": "ambient.mp3",
   "premium": {
     "provider": "gumroad",
     "productId": "REPLACE_WITH_GUMROAD_PRODUCT_ID",

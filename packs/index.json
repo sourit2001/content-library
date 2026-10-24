@@ -114,7 +114,7 @@
       "name": "玫瑰晚霞",
       "description": "玫瑰花窗外的湖光晚霞，温暖的珊瑚色。",
       "author": "Li Zhu",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "base": "glass",
       "scheme": "dark",
       "preview": "preview.jpg",
@@ -144,6 +144,7 @@
           "accent": "oklch(80% 0.120 30)"
         }
       },
+      "ambient": "ambient.mp3",
       "premium": {
         "provider": "gumroad",
         "productId": "REPLACE_WITH_GUMROAD_PRODUCT_ID",
@@ -157,7 +158,7 @@
       "name": "城市夜灯",
       "description": "深夜书桌、烛光与窗外的城市灯海。",
       "author": "Li Zhu",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "base": "glass",
       "scheme": "dark",
       "preview": "preview.jpg",
@@ -187,6 +188,7 @@
           "accent": "oklch(80% 0.120 60)"
         }
       },
+      "ambient": "ambient.mp3",
       "premium": {
         "provider": "gumroad",
         "productId": "REPLACE_WITH_GUMROAD_PRODUCT_ID",
@@ -200,7 +202,7 @@
       "name": "绯红都市",
       "description": "绯红落日下的城市天际线与沙发角落。",
       "author": "Li Zhu",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "base": "glass",
       "scheme": "dark",
       "preview": "preview.jpg",
@@ -230,6 +232,7 @@
           "accent": "oklch(80% 0.120 15)"
         }
       },
+      "ambient": "ambient.mp3",
       "premium": {
         "provider": "gumroad",
         "productId": "REPLACE_WITH_GUMROAD_PRODUCT_ID",

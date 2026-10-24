@@ -3,7 +3,7 @@
   "name": "城市夜灯",
   "description": "深夜书桌、烛光与窗外的城市灯海。",
   "author": "Li Zhu",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "base": "glass",
   "scheme": "dark",
   "preview": "preview.jpg",
@@ -33,6 +33,7 @@
       "accent": "oklch(80% 0.120 60)"
     }
   },
+  "ambient": "ambient.mp3",
   "premium": {
     "provider": "gumroad",
     "productId": "REPLACE_WITH_GUMROAD_PRODUCT_ID",
