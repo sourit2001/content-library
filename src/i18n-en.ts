@@ -343,4 +343,12 @@ export const EN: Record<string, string> = {
   "深色曜石黑，夜间更护眼。": "Deep obsidian black, easy on the eyes at night.",
   "窗边绿植与阳光，液态玻璃质感。": "Window-side plants and sunlight in liquid glass.",
   "精品主题限时免费，{date}前使用过即可永久保留": "Premium theme, free for a limited time — use it before {date} to keep it forever",
+  "精品 · 免费": "Premium · Free",
+  "支持作者": "Support the author",
+  "☕ 支持作者": "☕ Support",
+  "插件和素材包都是免费的。如果它对你有帮助，欢迎请我喝杯奶茶 🧋": "The plugin and all theme packs are free. If it helps you, you're welcome to buy me a coffee ☕",
+  "微信": "WeChat Pay",
+  "支付宝": "Alipay",
+  "用手机扫码即可，金额随意。谢谢你的支持！": "Scan with your phone and pay any amount. Thank you for your support!",
+  "支持作者 🧋": "Support the author 🧋",
 };

@@ -1691,3 +1691,26 @@
 @media (max-width: 600px) {
   .cld-pack-preview-info { flex-direction: column; align-items: stretch; }
 }
+
+/* Support the author */
+.cld-support-modal { width: min(560px, 92vw); }
+.cld-support-intro { margin: 0 0 16px; color: var(--text-muted); }
+.cld-support-codes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.cld-support-code { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px; border-radius: 14px; background: var(--background-secondary); }
+.cld-support-code img { width: 100%; max-width: 220px; aspect-ratio: 1; object-fit: contain; border-radius: 10px; background: #fff; }
+.cld-support-code.is-wechat strong { color: #07c160; }
+.cld-support-code.is-alipay strong { color: #1677ff; }
+.cld-support-note { display: block; margin-top: 14px; text-align: center; color: var(--text-faint); }
+.cld-pack-store-intro .cld-support-button { flex: none; width: auto; white-space: nowrap; }
+@media (max-width: 480px) { .cld-support-codes { grid-template-columns: 1fr; } }
+
+/* Inline support card (settings + pack store) */
+.cld-support-panel { display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap; margin: 8px 0 18px; padding: 14px 16px; border-radius: 14px; background: var(--background-secondary); border: 1px solid var(--background-modifier-border); }
+.cld-support-panel-copy { flex: 1 1 200px; min-width: 0; }
+.cld-support-panel-copy strong { display: block; font-size: 1.05em; margin-bottom: 4px; }
+.cld-support-panel-copy p { margin: 0 0 4px; color: var(--text-muted); }
+.cld-support-panel-copy small { color: var(--text-faint); }
+.cld-support-panel-codes { display: flex; gap: 12px; flex: none; }
+.cld-support-panel .cld-support-code { padding: 8px; gap: 6px; background: var(--background-primary); }
+.cld-support-panel .cld-support-code img { width: 132px; max-width: 132px; }
+@media (max-width: 480px) { .cld-support-panel-codes { width: 100%; justify-content: center; } .cld-support-panel .cld-support-code img { width: 120px; } }

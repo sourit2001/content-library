@@ -7,6 +7,7 @@ import {
 } from "obsidian";
 import type ContentLibraryDashboardPlugin from "./main";
 import { setLanguage, t, type LanguagePreference } from "./i18n";
+import { renderSupportPanel } from "./support";
 import { packDescription, packName } from "./packs";
 import {
   SOURCE_KIND_LABELS,
@@ -25,6 +26,7 @@ export class ContentLibrarySettingsTab extends PluginSettingTab {
     containerEl.empty();
     containerEl.addClass("cld-settings");
     new Setting(containerEl).setName(t("内容图书馆")).setHeading();
+    renderSupportPanel(containerEl);
     containerEl.createEl("p", {
       text: t("不需要预先创建固定文件夹。选择 Vault 里已有的文件夹即可；显示名称可以和实际路径不同。"),
     });

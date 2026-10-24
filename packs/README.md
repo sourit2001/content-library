@@ -32,6 +32,7 @@ packs/<id>/
 | field | meaning |
 | --- | --- |
 | `id` | lowercase letters, digits, `-`; also the folder name |
+| `nameEn` / `descriptionEn` | optional English name and description, shown when the plugin UI is in English |
 | `version` | bump it whenever files change, so installed users get "更新并使用" |
 | `base` | built-in theme that supplies layout CSS; use `glass` for packs with a background |
 | `scheme` | `dark` or `light` — native controls and scrollbars |

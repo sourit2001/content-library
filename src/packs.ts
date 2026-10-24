@@ -11,6 +11,7 @@ import type ContentLibraryDashboardPlugin from "./main";
 import glassBackground from "../assets/cld-glass-green-bg.jpg";
 import { THEME_LABELS, type AnnotationHighlight, type DashboardTheme } from "./types";
 import { dateLocale, isEnglish, t } from "./i18n";
+import { renderSupportPanel } from "./support";
 
 /** Store previews for the built-in themes (approximations of their CSS palettes). */
 const BUILTIN_PREVIEWS: Record<DashboardTheme, { swatches: string[]; description: string }> = {
@@ -33,6 +34,8 @@ const SERIES_PREMIUM: PackPremium = {
   price: "¥18",
   freeUntil: "2026-11-07T23:59:59+08:00",
 };
+/** Paid unlocking is switched off for now: every premium pack and theme is free. Flip to true to sell again. */
+export const PAYMENTS_ENABLED = false;
 export const PREMIUM_BUILTINS: DashboardTheme[] = ["glass"];
 
 /** English names for store packs, used when a pack's own data has no `nameEn` (older index / installed copies). */
@@ -265,7 +268,8 @@ export class ThemePackManager {
   }
 
   isUnlocked(pack: ThemePack): boolean {
-    return !pack.premium
+    return !PAYMENTS_ENABLED
+      || !pack.premium
       || Boolean(this.plugin.settings.licenses[pack.premium.productId])
       || isLimitedFree(pack);
   }
@@ -281,7 +285,8 @@ export class ThemePackManager {
 
   isBuiltinUnlocked(theme: DashboardTheme): boolean {
     const premium = this.builtinPremium(theme);
-    return !premium
+    return !PAYMENTS_ENABLED
+      || !premium
       || this.isBuiltinClaimed(theme)
       || Boolean(this.plugin.settings.licenses[premium.productId])
       || isLimitedFree({ premium } as ThemePack);
@@ -517,6 +522,7 @@ export class ThemePackStoreModal extends Modal {
     const refresh = intro.createEl("button", { cls: "clickable-icon", attr: { "aria-label": t("刷新素材包列表") } });
     setIcon(refresh, "refresh-cw");
     refresh.addEventListener("click", () => void this.load(true));
+    renderSupportPanel(contentEl);
 
     if (error) contentEl.createDiv({ cls: "cld-pack-store-status is-inline", text: error });
     const premium: Array<DashboardTheme | ThemePack> = [...PREMIUM_BUILTINS, ...this.packs.filter((pack) => pack.premium)];
@@ -555,12 +561,12 @@ export class ThemePackStoreModal extends Modal {
     const premium = this.plugin.packs.builtinPremium(theme);
     const unlocked = this.plugin.packs.isBuiltinUnlocked(theme);
     const owned = Boolean(premium) && (this.plugin.packs.isBuiltinClaimed(theme) || Boolean(this.plugin.settings.licenses[premium?.productId ?? ""]));
-    const limitedFree = Boolean(premium) && !owned && unlocked;
+    const limitedFree = PAYMENTS_ENABLED && Boolean(premium) && !owned && unlocked;
     if (!premium) {
       preview.createSpan({ cls: "cld-pack-badge is-builtin", text: t("内置 · 免费") });
     } else {
       const badge = preview.createSpan({ cls: `cld-pack-badge is-premium${limitedFree ? " is-limited" : ""}` });
-      badge.setText(limitedFree ? t("限时免费") : owned ? t("已解锁") : t("精品 {price}", { price: premium.price ?? "" }).trim());
+      badge.setText(!PAYMENTS_ENABLED ? t("精品 · 免费") : limitedFree ? t("限时免费") : owned ? t("已解锁") : t("精品 {price}", { price: premium.price ?? "" }).trim());
     }
     const body = card.createDiv({ cls: "cld-pack-body" });
     body.createEl("strong", { text: t(THEME_LABELS[theme]) });
@@ -598,7 +604,7 @@ export class ThemePackStoreModal extends Modal {
     const installed = this.plugin.settings.installedPacks[pack.id];
     const isActive = this.plugin.settings.activePackId === pack.id;
     const unlocked = this.plugin.packs.isUnlocked(pack);
-    const limitedFree = Boolean(pack.premium) && isLimitedFree(pack)
+    const limitedFree = PAYMENTS_ENABLED && Boolean(pack.premium) && isLimitedFree(pack)
       && !this.plugin.settings.licenses[pack.premium?.productId ?? ""];
     const card = grid.createDiv({ cls: `cld-pack-card${isActive ? " is-active" : ""}` });
     const preview = card.createDiv({ cls: "cld-pack-preview is-clickable", attr: { role: "button", tabindex: "0", "aria-label": t("预览效果") } });
@@ -621,7 +627,7 @@ export class ThemePackStoreModal extends Modal {
       }
     });
     const badge = preview.createSpan({ cls: `cld-pack-badge${pack.premium ? " is-premium" : ""}${limitedFree ? " is-limited" : ""}` });
-    badge.setText(!pack.premium ? t("免费") : limitedFree ? t("限时免费") : unlocked ? t("已解锁") : t("精品 {price}", { price: pack.premium.price ?? "" }).trim());
+    badge.setText(!pack.premium ? t("免费") : !PAYMENTS_ENABLED ? t("精品 · 免费") : limitedFree ? t("限时免费") : unlocked ? t("已解锁") : t("精品 {price}", { price: pack.premium.price ?? "" }).trim());
     const body = card.createDiv({ cls: "cld-pack-body" });
     body.createEl("strong", { text: packName(pack) });
     if (pack.description) body.createEl("small", { text: packDescription(pack) });

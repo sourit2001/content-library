@@ -11,6 +11,7 @@ import { NOTE_SUFFIXES, dateLocale, noteSuffix, setLanguage, sourceLabel, t, tim
 import { AmbientPlayer } from "./ambient";
 import { ThemePackManager, ThemePackStoreModal, sanitizePack, type ThemePack } from "./packs";
 import { ContentLibrarySettingsTab } from "./settings";
+import { SupportModal } from "./support";
 import {
   ContentLibraryView,
   CONTENT_LIBRARY_VIEW_TYPE,
@@ -69,6 +70,11 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
       name: "Browse theme packs",
       callback: () => this.openPackStore(),
     });
+    this.addCommand({
+      id: "support-author",
+      name: "Support the author",
+      callback: () => this.openSupport(),
+    });
     this.addSettingTab(new ContentLibrarySettingsTab(this.app, this));
     this.registerEvent(this.app.workspace.on("css-change", () => {
       // Pack palettes are resolved per light/dark mode in TS, so follow Obsidian's theme switch.
@@ -101,6 +107,10 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
       await leaf.setViewState({ type: CONTENT_LIBRARY_VIEW_TYPE, active: true });
     }
     void this.app.workspace.revealLeaf(leaf);
+  }
+
+  openSupport(): void {
+    new SupportModal(this.app).open();
   }
 
   openPackStore(): void {
