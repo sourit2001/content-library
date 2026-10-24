@@ -1,5 +1,20 @@
 # Theme packs
 
+## Publishing changes
+
+CDN mirrors cache the `main` branch unevenly, so the plugin downloads pack
+files from a pinned commit and reads `index.json` from both jsDelivr and
+GitHub, keeping the copy with the highest `revision`. Publish in two commits:
+
+```bash
+git add packs && git commit -m "Update packs"     # 1. pack files
+python3 scripts/stamp-index.py                     # 2. sets index.json ref + revision
+git commit -am "Stamp pack index" && git push      # 3. publish
+```
+
+Always bump a pack's `version` when its files change, so installed users see
+「更新并使用」.
+
 Each folder here is one theme pack. `index.json` lists every pack the plugin
 store shows; the plugin reads it from
 `https://cdn.jsdelivr.net/gh/sourit2001/content-library@main/packs/index.json`.
