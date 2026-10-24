@@ -1,4 +1,5 @@
 import { App, normalizePath, TFile } from "obsidian";
+import { t } from "./i18n";
 import type { ContentItem, ContentSource, SourceKind } from "./types";
 
 const AUDIO_EXTENSIONS = new Set(["mp3", "m4a", "wav", "flac", "aac", "ogg", "opus"]);
@@ -159,6 +160,6 @@ export class VaultContentIndexer {
   }
 
   kindLabel(kind: SourceKind): string {
-    return ({ book: "书籍", podcast: "播客", music: "音乐", x: "X 推文", news: "新闻", clip: "网页收藏", generic: "笔记" })[kind];
+    return ({ book: t("书籍"), podcast: t("播客"), music: t("音乐"), x: t("X 推文"), news: t("新闻"), clip: t("网页收藏"), generic: t("笔记") })[kind];
   }
 }

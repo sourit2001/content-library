@@ -7,6 +7,9 @@ import {
   normalizePath,
 } from "obsidian";
 import { VaultContentIndexer } from "./indexer";
+import { NOTE_SUFFIXES, dateLocale, noteSuffix, setLanguage, sourceLabel, t, timeLabel } from "./i18n";
+import { AmbientPlayer } from "./ambient";
+import { ThemePackManager, ThemePackStoreModal, sanitizePack, type ThemePack } from "./packs";
 import { ContentLibrarySettingsTab } from "./settings";
 import {
   ContentLibraryView,
@@ -36,14 +39,18 @@ export interface NetEasePlaylist extends MusicCollectionSnapshot { tracks: Music
 export default class ContentLibraryDashboardPlugin extends Plugin {
   override settings: DashboardSettings = { ...DEFAULT_SETTINGS };
   indexer!: VaultContentIndexer;
+  packs = new ThemePackManager(this);
+  ambient = new AmbientPlayer(this);
   private refreshTimer: number | null = null;
   private webPreviewCache = new Map<string, Promise<WebPreview>>();
   private playlistCache = new Map<string, Promise<NetEasePlaylist | null>>();
 
   override async onload(): Promise<void> {
     await this.loadSettings();
+    setLanguage(this.settings.language);
     await this.saveData(this.settings);
     this.indexer = new VaultContentIndexer(this.app);
+    this.ambient.register();
 
     this.registerView(
       CONTENT_LIBRARY_VIEW_TYPE,
@@ -57,7 +64,16 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
       name: "Open dashboard",
       callback: () => void this.activateView(),
     });
+    this.addCommand({
+      id: "open-theme-packs",
+      name: "Browse theme packs",
+      callback: () => this.openPackStore(),
+    });
     this.addSettingTab(new ContentLibrarySettingsTab(this.app, this));
+    this.registerEvent(this.app.workspace.on("css-change", () => {
+      // Pack palettes are resolved per light/dark mode in TS, so follow Obsidian's theme switch.
+      if (this.settings.activePackId && this.settings.themeMode === "system") this.refreshViews();
+    }));
 
     const onChange = (file: TAbstractFile) => {
       if (file instanceof TFile && file.extension !== "md" && !/\.(png|jpe?g|webp|gif|mp3|m4a|wav|flac|aac)$/i.test(file.path)) return;
@@ -87,6 +103,10 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
     void this.app.workspace.revealLeaf(leaf);
   }
 
+  openPackStore(): void {
+    new ThemePackStoreModal(this.app, this).open();
+  }
+
   openSettingTab(): void {
     const host = this.app as unknown as SettingsHost;
     host.setting?.open();
@@ -102,6 +122,12 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
       ...DEFAULT_SETTINGS,
       ...loaded,
       theme,
+      installedPacks: this.normalizeInstalledPacks(loaded?.installedPacks),
+      activePackId: typeof loaded?.activePackId === "string" ? loaded.activePackId : "",
+      licenses: loaded?.licenses && typeof loaded.licenses === "object" ? loaded.licenses : {},
+      ambientVolume: typeof loaded?.ambientVolume === "number" && loaded.ambientVolume >= 0 && loaded.ambientVolume <= 1
+        ? loaded.ambientVolume
+        : DEFAULT_SETTINGS.ambientVolume,
       themeMode: (["system", "light", "dark"] as ThemeMode[]).includes(loaded?.themeMode as ThemeMode)
         ? loaded?.themeMode as ThemeMode
         : DEFAULT_SETTINGS.themeMode,
@@ -121,10 +147,16 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
       musicCollectionSnapshots: loaded?.musicCollectionSnapshots && typeof loaded.musicCollectionSnapshots === "object"
         ? loaded.musicCollectionSnapshots
         : {},
+      claimedThemes: Array.isArray(loaded?.claimedThemes)
+        ? loaded.claimedThemes.filter((value): value is DashboardTheme => ["grass", "blue", "pink", "rose", "black", "glass"].includes(value))
+        : [],
+      language: loaded?.language === "zh" || loaded?.language === "en" ? loaded.language : "auto",
       playbackMode: (["sequential", "list-loop", "single-loop", "shuffle"] as const).includes(
         loaded?.playbackMode as DashboardSettings["playbackMode"],
       ) ? loaded?.playbackMode as DashboardSettings["playbackMode"] : "sequential",
     };
+    // Anyone already on the glass theme keeps it after it became a premium (limited-free) theme.
+    if (this.settings.theme === "glass" && !this.settings.claimedThemes.includes("glass")) this.settings.claimedThemes.push("glass");
     const musicFolder = normalizePath("音乐收藏");
     const hasMusicFolder = Boolean(this.app.vault.getAbstractFileByPath(musicFolder));
     const hasMusicSource = this.settings.sources.some((source) => normalizePath(source.folder).replace(/\/$/, "") === musicFolder);
@@ -148,6 +180,16 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
     return [...requested.filter((entry): entry is SourceGroup => defaults.includes(entry as SourceGroup)), ...defaults]
       .filter((entry, index, array) => array.indexOf(entry) === index)
       .slice(0, defaults.length);
+  }
+
+  private normalizeInstalledPacks(raw: unknown): Record<string, ThemePack> {
+    const packs: Record<string, ThemePack> = {};
+    if (!raw || typeof raw !== "object") return packs;
+    for (const value of Object.values(raw as Record<string, unknown>)) {
+      const pack = sanitizePack(value);
+      if (pack) packs[pack.id] = pack;
+    }
+    return packs;
   }
 
   private normalizeSource(source: ContentSource): ContentSource {
@@ -199,14 +241,14 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
         const radio = programs[0].radio;
         return {
           id: programRadioId,
-          title: radio?.name || "网易云播客",
+          title: radio?.name || t("网易云播客"),
           cover: radio?.picUrl || programs[0].coverUrl || "",
-          creator: radio?.name || "网易云播客",
+          creator: radio?.name || t("网易云播客"),
           trackCount: programs.length,
           tracks: programs.map((program) => ({
             id: String(program.id || ""),
-            title: program.name || "未命名节目",
-            artist: program.dj?.nickname || radio?.name || "网易云播客",
+            title: program.name || t("未命名节目"),
+            artist: program.dj?.nickname || radio?.name || t("网易云播客"),
             album: program.description || "",
             cover: program.coverUrl || radio?.picUrl || "",
             url: program.id ? `https://music.163.com/#/program?id=${program.id}` : "",
@@ -238,12 +280,12 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
         id: String(playlist.id),
         title: playlist.name,
         cover: playlist.coverImgUrl || "",
-        creator: playlist.creator?.nickname || "网易云歌单",
+        creator: playlist.creator?.nickname || t("网易云歌单"),
         trackCount: playlist.trackCount || playlist.tracks?.length || 0,
         tracks: (playlist.tracks || []).map((track) => ({
           id: String(track.id || ""),
-          title: track.name || "未命名歌曲",
-          artist: (track.ar || []).map((artist) => artist.name).filter(Boolean).join(" / ") || "未知歌手",
+          title: track.name || t("未命名歌曲"),
+          artist: (track.ar || []).map((artist) => artist.name).filter(Boolean).join(" / ") || t("未知歌手"),
           album: track.al?.name || "",
           cover: track.al?.picUrl || "",
           url: track.id ? `https://music.163.com/#/song?id=${track.id}` : "",
@@ -296,14 +338,14 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
       const tracks = playlist.songlist || [];
       return {
         id: playlist.disstid || playlistId,
-        title: playlist.dissname || "QQ音乐歌单",
+        title: playlist.dissname || t("QQ音乐歌单"),
         cover: (playlist.logo || "").replace(/^http:/i, "https:"),
-        creator: playlist.nickname || playlist.nick || "QQ音乐",
+        creator: playlist.nickname || playlist.nick || t("QQ音乐"),
         trackCount: playlist.total_song_num || playlist.songnum || tracks.length,
         tracks: tracks.map((track) => ({
           id: track.songmid || String(track.songid || ""),
-          title: track.songname || "未命名歌曲",
-          artist: (track.singer || []).map((singer) => singer.name).filter(Boolean).join(" / ") || "未知歌手",
+          title: track.songname || t("未命名歌曲"),
+          artist: (track.singer || []).map((singer) => singer.name).filter(Boolean).join(" / ") || t("未知歌手"),
           album: track.albumname || "",
           cover: track.albummid ? `https://y.qq.com/music/photo_new/T002R300x300M000${track.albummid}.jpg` : "",
           url: track.songmid ? `https://y.qq.com/n/ryqq/songDetail/${track.songmid}` : url,
@@ -367,8 +409,8 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
       const tracks = album?.list || [];
       if (!album || !tracks.length) return null;
       const albumMid = tracks[0].albummid || "";
-      const albumTitle = tracks[0].albumname || "QQ音乐专辑";
-      const creator = (tracks[0].singer || []).map((singer) => singer.name).filter(Boolean).join(" / ") || album.company || "QQ音乐";
+      const albumTitle = tracks[0].albumname || t("QQ音乐专辑");
+      const creator = (tracks[0].singer || []).map((singer) => singer.name).filter(Boolean).join(" / ") || album.company || t("QQ音乐");
       return {
         id: String(album.id || albumId),
         title: albumTitle,
@@ -377,8 +419,8 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
         trackCount: album.cur_song_num || tracks.length,
         tracks: tracks.map((track) => ({
           id: track.songmid || String(track.songid || ""),
-          title: track.songname || "未命名歌曲",
-          artist: (track.singer || []).map((singer) => singer.name).filter(Boolean).join(" / ") || "未知歌手",
+          title: track.songname || t("未命名歌曲"),
+          artist: (track.singer || []).map((singer) => singer.name).filter(Boolean).join(" / ") || t("未知歌手"),
           album: track.albumname || albumTitle,
           cover: track.albummid ? `https://y.qq.com/music/photo_new/T002R300x300M000${track.albummid}.jpg` : "",
           url: track.songmid ? `https://y.qq.com/n/ryqq/songDetail/${track.songmid}` : url,
@@ -483,9 +525,9 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
       if (!song) return null;
       const songMid = song.mid || "";
       const albumMid = song.album?.mid || "";
-      const artist = (song.singer || []).map((singer) => singer.name).filter(Boolean).join(" / ") || "未知歌手";
+      const artist = (song.singer || []).map((singer) => singer.name).filter(Boolean).join(" / ") || t("未知歌手");
       const cover = albumMid ? `https://y.qq.com/music/photo_new/T002R300x300M000${albumMid}.jpg` : "";
-      const title = song.title || song.name || "QQ音乐单曲";
+      const title = song.title || song.name || t("QQ音乐单曲");
       return {
         id: songMid || String(song.id || songId),
         title,
@@ -609,8 +651,11 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
   annotationFile(item: ContentItem): TFile | null {
     const folder = normalizePath(this.settings.annotationFolder || DEFAULT_SETTINGS.annotationFolder);
     const safeTitle = item.title.replace(/[\\/:*?"<>|#^[\]]/g, "-").slice(0, 80) || "Untitled";
-    const file = this.app.vault.getAbstractFileByPath(normalizePath(`${folder}/${safeTitle}-笔记.md`));
-    return file instanceof TFile ? file : null;
+    for (const suffix of NOTE_SUFFIXES) {
+      const file = this.app.vault.getAbstractFileByPath(normalizePath(`${folder}/${safeTitle}${suffix}.md`));
+      if (file instanceof TFile) return file;
+    }
+    return null;
   }
 
   private async fetchWebPreview(url: string): Promise<WebPreview> {
@@ -650,7 +695,7 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
       const parsed = new URL(url);
       return { url, title: parsed.hostname.replace(/^www\./, ""), description: "", host: parsed.hostname.replace(/^www\./, ""), image: "", favicon: `${parsed.origin}/favicon.ico` };
     } catch {
-      return { url, title: "网页链接", description: "", host: "网页", image: "", favicon: "" };
+      return { url, title: t("网页链接"), description: "", host: t("网页"), image: "", favicon: "" };
     }
   }
 
@@ -707,24 +752,25 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
     const folder = normalizePath(this.settings.annotationFolder || DEFAULT_SETTINGS.annotationFolder);
     await this.ensureFolder(folder);
     const safeTitle = item.title.replace(/[\\/:*?"<>|#^[\]]/g, "-").slice(0, 80) || "Untitled";
-    const path = normalizePath(`${folder}/${safeTitle}-笔记.md`);
-    const existing = this.app.vault.getAbstractFileByPath(path);
-    const heading = `## ${new Date().toLocaleString()}`;
-    const source = `来源：[[${item.file.path}]]${item.externalUrl ? ` · ${item.externalUrl}` : ""}`;
-    const timestamp = time ? `\n时间：${time}` : "";
+    const existingNote = this.annotationFile(item);
+    const path = existingNote?.path ?? normalizePath(`${folder}/${safeTitle}${noteSuffix()}.md`);
+    const existing = existingNote ?? this.app.vault.getAbstractFileByPath(path);
+    const heading = `## ${new Date().toLocaleString(dateLocale())}`;
+    const source = `${sourceLabel()}[[${item.file.path}]]${item.externalUrl ? ` · ${item.externalUrl}` : ""}`;
+    const timestamp = time ? `\n${timeLabel()}${time}` : "";
     const quotation = quote.trim() ? `\n\n> ${quote.trim().replace(/\n+/g, "\n> ")}` : "";
     const block = `${heading}\n\n${source}${timestamp}${quotation}${cleanText ? `\n\n${cleanText}` : ""}\n\n`;
     if (existing instanceof TFile) {
       await this.app.vault.append(existing, `\n${block}`);
       return existing;
     }
-    return this.app.vault.create(path, `# ${item.title} · 笔记\n\n${block}`);
+    return this.app.vault.create(path, `# ${item.title} · ${t("笔记")}\n\n${block}`);
   }
 
   async createNoteInSource(source: ContentSource, title: string): Promise<TFile> {
     const folder = normalizePath(source.folder);
     await this.ensureFolder(folder);
-    const safeTitle = title.trim().replace(/[\\/:*?"<>|#^[\]]/g, "-").slice(0, 100) || "未命名笔记";
+    const safeTitle = title.trim().replace(/[\\/:*?"<>|#^[\]]/g, "-").slice(0, 100) || t("未命名笔记");
     let path = normalizePath(`${folder}/${safeTitle}.md`);
     let counter = 2;
     while (this.app.vault.getAbstractFileByPath(path)) {
@@ -739,20 +785,20 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
   async createMusicPlaylistNote(source: ContentSource, url: string, title: string): Promise<TFile> {
     const folder = normalizePath(source.folder);
     await this.ensureFolder(folder);
-    const safeTitle = title.trim().replace(/[\\/:*?"<>|#^[\]]/g, "-").slice(0, 100) || "网易云歌单";
+    const safeTitle = title.trim().replace(/[\\/:*?"<>|#^[\]]/g, "-").slice(0, 100) || t("网易云歌单");
     let path = normalizePath(`${folder}/${safeTitle}.md`);
     let counter = 2;
     while (this.app.vault.getAbstractFileByPath(path)) {
       path = normalizePath(`${folder}/${safeTitle}-${counter}.md`);
       counter += 1;
     }
-    const content = `---\ntitle: ${JSON.stringify(title.trim() || "网易云歌单")}\nplaylist_url: ${url.trim()}\n---\n`;
+    const content = `---\ntitle: ${JSON.stringify(title.trim() || t("网易云歌单"))}\nplaylist_url: ${url.trim()}\n---\n`;
     return this.app.vault.create(path, content);
   }
 
   async renameMusicPlaylistNote(file: TFile, title: string): Promise<void> {
     const nextTitle = title.trim();
-    if (!nextTitle) throw new Error("名称不能为空。");
+    if (!nextTitle) throw new Error(t("名称不能为空。"));
     await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
       Object.assign(frontmatter, { title: nextTitle });
     });
@@ -766,7 +812,7 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
 
   async importImage(file: File, group: "Banners" | "Covers" = "Covers"): Promise<string> {
     if (!/^image\/(png|jpeg|webp|gif)$/i.test(file.type) && !/\.(png|jpe?g|webp|gif)$/i.test(file.name)) {
-      throw new Error("请选择 PNG、JPG、WEBP 或 GIF 图片。");
+      throw new Error(t("请选择 PNG、JPG、WEBP 或 GIF 图片。"));
     }
     const folder = normalizePath(`Content Library Assets/${group}`);
     await this.ensureFolder(folder);

@@ -24,6 +24,8 @@ import {
   type WebPreview,
 } from "./types";
 import type { NetEasePlaylist } from "./main";
+import { SOURCE_LABELS, TIME_LABELS, dateLocale, sourceLabel, t } from "./i18n";
+import { packName } from "./packs";
 
 export const CONTENT_LIBRARY_VIEW_TYPE = "content-library-dashboard-view";
 const ANNOTATION_SOURCE_ID = "system-dashboard-annotations";
@@ -45,6 +47,7 @@ export class ContentLibraryView extends ItemView {
   private selected: ContentItem | null = null;
   private detailOpen = false;
   private audio: HTMLAudioElement | null = null;
+  private ambientUnsubscribe: (() => void) | null = null;
   private audioItemId: string | null = null;
   private playing = false;
   private autoplayItemId: string | null = null;
@@ -82,7 +85,7 @@ export class ContentLibraryView extends ItemView {
     this.registerInterval(window.setInterval(() => {
       if (this.app.workspace.getActiveViewOfType(ContentLibraryView)?.leaf === this.leaf && document.hasFocus()) {
         void this.plugin.recordUsageMinute().then(() => {
-          const value = this.contentEl.querySelector<HTMLElement>('[data-metric="使用时间"] strong');
+          const value = this.contentEl.querySelector<HTMLElement>('[data-metric="usage"] strong');
           if (value) value.textContent = formatUsage(this.plugin.todayUsageMinutes());
         });
       }
@@ -102,6 +105,11 @@ export class ContentLibraryView extends ItemView {
   override async onClose(): Promise<void> {
     this.readingScrollCleanup?.();
     this.destroyAudio();
+    this.ambientUnsubscribe?.();
+    this.ambientUnsubscribe = null;
+    // Ambience belongs to the dashboard: stop it when the last dashboard closes.
+    const others = this.app.workspace.getLeavesOfType(CONTENT_LIBRARY_VIEW_TYPE).filter((leaf) => leaf.view !== this);
+    if (!others.length) this.plugin.ambient.stop();
   }
 
   async refresh(): Promise<void> {
@@ -110,10 +118,13 @@ export class ContentLibraryView extends ItemView {
     const root = this.contentEl;
     root.empty();
     root.addClass("cld-view-content");
-    const shell = root.createDiv({ cls: `cld-root cld-theme-${this.plugin.settings.theme} cld-mode-${this.plugin.settings.themeMode} cld-annotation-${this.plugin.settings.annotationHighlight}` });
-    if (this.plugin.settings.theme === "glass") {
+    const pack = this.plugin.packs.active();
+    const theme = pack ? pack.base : this.plugin.settings.theme;
+    const shell = root.createDiv({ cls: `cld-root cld-theme-${theme} cld-mode-${this.plugin.settings.themeMode} cld-annotation-${this.plugin.settings.annotationHighlight}${pack ? ` cld-pack cld-pack-${pack.id}` : ""}` });
+    if (theme === "glass") {
       shell.style.setProperty("--cld-glass-background", `url("${glassBackground}")`);
     }
+    if (pack) this.plugin.packs.applyToElement(shell, pack);
     const podcastHome = !this.detailOpen && this.isPodcastMode();
     const musicHome = !this.detailOpen && this.isMusicMode();
     const layout = shell.createDiv({ cls: `cld-layout${this.detailOpen ? " is-detail" : ""}${podcastHome ? " is-podcast" : ""}${musicHome ? " is-music" : ""}` });
@@ -134,7 +145,7 @@ export class ContentLibraryView extends ItemView {
     if (sources.some((source) => source.folder.replace(/\/$/, "") === folder.replace(/\/$/, ""))) return sources;
     return [...sources, {
       id: ANNOTATION_SOURCE_ID,
-      name: "我的批注",
+      name: t("我的批注"),
       folder,
       kind: "generic",
       group: "ideas",
@@ -175,7 +186,7 @@ export class ContentLibraryView extends ItemView {
   }
 
   private renderSidebar(layout: HTMLElement): void {
-    const aside = layout.createEl("aside", { cls: "cld-sidebar cld-glass", attr: { "aria-label": "内容导航" } });
+    const aside = layout.createEl("aside", { cls: "cld-sidebar cld-glass", attr: { "aria-label": t("内容导航") } });
     const brand = aside.createDiv({ cls: "cld-brand" });
     brand.createSpan({ cls: "cld-brand-name", text: "Mori" });
     const nav = aside.createEl("nav", { cls: "cld-nav" });
@@ -194,15 +205,15 @@ export class ContentLibraryView extends ItemView {
       if (nav.scrollLeft !== previous) event.preventDefault();
     }, { passive: false });
     this.bindNavDragAndDrop(nav);
-    nav.createEl("p", { cls: "cld-nav-section-label", text: "主页" });
-    this.renderNavButton(nav, "today", "今天", "home", this.plugin.indexer.all(this.enabledSources(), 8).length);
+    nav.createEl("p", { cls: "cld-nav-section-label", text: t("主页") });
+    this.renderNavButton(nav, "today", t("今天"), "home", this.plugin.indexer.all(this.enabledSources(), 8).length);
     const groupOrder = this.plugin.settings.sourceGroupOrder;
     for (const group of groupOrder) {
       const sources = this.enabledSources().filter((source) => source.group === group);
       if (!sources.length) continue;
       nav.createEl("p", {
         cls: "cld-nav-section-label cld-draggable-nav-group",
-        text: SOURCE_GROUP_LABELS[group],
+        text: t(SOURCE_GROUP_LABELS[group]),
         attr: { draggable: "true", "data-nav-group": group },
       });
       for (const source of sources) this.renderFolderButton(nav, source);
@@ -210,7 +221,7 @@ export class ContentLibraryView extends ItemView {
     const add = aside.createEl("button", { cls: "cld-add-source", attr: { type: "button" } });
     const icon = add.createSpan();
     setIcon(icon, "folder-plus");
-    add.createSpan({ text: "添加文件夹" });
+    add.createSpan({ text: t("添加文件夹") });
     add.addEventListener("click", () => this.plugin.openSettingTab());
     window.requestAnimationFrame(() => {
       if (!aside.isConnected) return;
@@ -231,7 +242,7 @@ export class ContentLibraryView extends ItemView {
       },
     });
     button.createSpan({ text: source.name });
-    button.createEl("small", { text: `${count} 项` });
+    button.createEl("small", { text: t("{count} 项", { count }) });
     button.addEventListener("click", () => {
       this.activeSourceId = source.id;
       this.selected = null;
@@ -313,7 +324,7 @@ export class ContentLibraryView extends ItemView {
   private updateTodayClock(): void {
     const now = new Date();
     const clock = this.contentEl.querySelector<HTMLElement>(".cld-live-clock");
-    if (clock) clock.textContent = new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(now);
+    if (clock) clock.textContent = new Intl.DateTimeFormat(dateLocale(), { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(now);
     const greeting = this.contentEl.querySelector<HTMLElement>(".cld-live-greeting");
     if (greeting) greeting.textContent = greetingForHour(now.getHours());
   }
@@ -343,25 +354,46 @@ export class ContentLibraryView extends ItemView {
     const podcastMode = this.isPodcastMode();
     if (this.activeSourceId === "today" && !podcastMode) {
       const today = new Date();
-      greeting.createEl("div", { cls: "cld-live-date", text: new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "long" }).format(today) });
+      greeting.createEl("div", { cls: "cld-live-date", text: new Intl.DateTimeFormat(dateLocale(), { year: "numeric", month: "long", day: "numeric", weekday: "long" }).format(today) });
     } else {
-      greeting.createEl("small", { text: podcastMode ? "收听空间" : new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "long" }).format(new Date()) });
+      greeting.createEl("small", { text: podcastMode ? t("收听空间") : new Intl.DateTimeFormat(dateLocale(), { month: "long", day: "numeric", weekday: "long" }).format(new Date()) });
     }
     greeting.createEl("h1", { cls: podcastMode ? "" : "cld-live-greeting", text: podcastMode ? "Podcast" : greetingForHour(new Date().getHours()) });
     const actions = header.createDiv({ cls: "cld-topbar-actions" });
-    const select = actions.createEl("select", { cls: "dropdown cld-theme-select", attr: { "aria-label": "主体配色" } });
+    const select = actions.createEl("select", { cls: "dropdown cld-theme-select", attr: { "aria-label": t("主体配色") } });
     for (const [value, label] of Object.entries(THEME_LABELS)) {
-      select.createEl("option", { value, text: label });
+      select.createEl("option", { value, text: t(label) });
     }
-    select.value = this.plugin.settings.theme;
+    const installedPacks = this.plugin.packs.installed();
+    if (installedPacks.length) {
+      const group = select.createEl("optgroup", { attr: { label: t("素材包") } });
+      for (const pack of installedPacks) group.createEl("option", { value: `pack:${pack.id}`, text: packName(pack) });
+    }
+    select.createEl("option", { value: "__store", text: t("更多素材包…") });
+    const activePack = this.plugin.packs.active();
+    const currentValue = activePack ? `pack:${activePack.id}` : this.plugin.settings.theme;
+    select.value = currentValue;
     select.addEventListener("change", async () => {
-      this.plugin.settings.theme = select.value as DashboardTheme;
-      await this.plugin.saveSettings();
+      const value = select.value;
+      if (value === "__store") {
+        select.value = currentValue;
+        this.plugin.openPackStore();
+        return;
+      }
+      if (value.startsWith("pack:")) {
+        await this.plugin.packs.apply(value.slice(5));
+        return;
+      }
+      if (!(await this.plugin.packs.useBuiltin(value as DashboardTheme))) {
+        select.value = currentValue;
+        this.plugin.openPackStore();
+      }
     });
+    this.renderAmbientControl(actions);
     if (podcastMode) {
-      const search = this.iconButton(actions, "search", "搜索节目");
+      const search = this.iconButton(actions, "search", t("搜索节目"));
       search.addEventListener("click", () => {
-        const next = window.prompt("搜索节目", this.searchQuery);
+        const next = window.prompt(t("搜索节目"), this.searchQuery);
         if (next === null) return;
         this.searchQuery = next.trim();
         void this.refresh();
@@ -372,17 +404,45 @@ export class ContentLibraryView extends ItemView {
         const create = actions.createEl("button", { cls: "cld-topbar-text-button", attr: { type: "button" } });
         const createIcon = create.createSpan();
         setIcon(createIcon, "file-plus-2");
-        create.createSpan({ text: "新建笔记" });
+        create.createSpan({ text: t("新建笔记") });
         create.addEventListener("click", () => {
           new NoteTitleModal(this.app, source.name, async (title) => {
             const file = await this.plugin.createNoteInSource(source, title);
-            new Notice(`已创建 ${file.path}`);
+            new Notice(t("已创建 {path}", { path: file.path }));
           }).open();
         });
       }
       const settings = this.iconButton(actions, "settings-2", "Dashboard settings");
       settings.addEventListener("click", () => this.plugin.openSettingTab());
     }
+  }
+
+  private renderAmbientControl(actions: HTMLElement): void {
+    this.ambientUnsubscribe?.();
+    this.ambientUnsubscribe = null;
+    const pack = this.plugin.packs.active();
+    if (!pack?.ambient) return;
+    const ambient = this.plugin.ambient;
+    const wrap = actions.createDiv({ cls: "cld-ambient" });
+    const button = this.iconButton(wrap, "audio-lines", t("环境音"));
+    const volume = wrap.createEl("input", {
+      cls: "cld-ambient-volume",
+      attr: { type: "range", min: "0", max: "100", "aria-label": t("环境音音量") },
+    });
+    volume.value = String(Math.round(ambient.volume * 100));
+    volume.addEventListener("input", () => ambient.setVolume(Number(volume.value) / 100));
+    const update = () => {
+      const on = ambient.isPlayingFor(pack);
+      wrap.toggleClass("is-playing", on);
+      wrap.toggleClass("is-held", on && ambient.held);
+      button.setAttr("aria-label", on ? (ambient.held ? t("环境音（播客播放中，已暂停）") : t("关闭环境音")) : t("播放环境音"));
+    };
+    button.addEventListener("click", async () => {
+      await ambient.toggle(pack);
+      update();
+    });
+    update();
+    this.ambientUnsubscribe = ambient.onChange(update);
   }
 
   private async renderHome(main: HTMLElement): Promise<void> {
@@ -402,19 +462,19 @@ export class ContentLibraryView extends ItemView {
 
     const isDashboardHome = this.activeSourceId === "today";
     const metricItems = isDashboardHome ? this.plugin.indexer.all(this.enabledSources(), 120) : items;
-    const metrics = main.createEl("section", { cls: "cld-metrics", attr: { "aria-label": "内容概览" } });
+    const metrics = main.createEl("section", { cls: "cld-metrics", attr: { "aria-label": t("内容概览") } });
     const today = metricItems.filter((item) => Date.now() - item.modified < 24 * 60 * 60 * 1000).length;
     const books = metricItems.filter((item) => item.kind === "book").length;
     const audio = metricItems.filter((item) => item.kind === "podcast").length;
-    this.metric(metrics, "今日", String(today), Math.min(100, today * 12));
-    if (isDashboardHome) this.metric(metrics, "使用时间", formatUsage(this.plugin.todayUsageMinutes()), Math.min(100, this.plugin.todayUsageMinutes() / 1.2));
-    this.metric(metrics, "阅读", String(books), Math.min(100, books * 9));
-    this.metric(metrics, "收听", String(audio), Math.min(100, audio * 13));
+    this.metric(metrics, "today", t("今日"), String(today), Math.min(100, today * 12));
+    if (isDashboardHome) this.metric(metrics, "usage", t("使用时间"), formatUsage(this.plugin.todayUsageMinutes()), Math.min(100, this.plugin.todayUsageMinutes() / 1.2));
+    this.metric(metrics, "books", t("阅读"), String(books), Math.min(100, books * 9));
+    this.metric(metrics, "audio", t("收听"), String(audio), Math.min(100, audio * 13));
 
     if (!items.length) {
       const empty = main.createDiv({ cls: "cld-empty cld-glass" });
-      empty.createEl("h3", { text: "这个栏目还没有内容" });
-      empty.createEl("p", { text: "在设置中选择一个包含笔记或音频的 Vault 文件夹。" });
+      empty.createEl("h3", { text: t("这个栏目还没有内容") });
+      empty.createEl("p", { text: t("在设置中选择一个包含笔记或音频的 Vault 文件夹。") });
       return;
     }
     if (isDashboardHome) {
@@ -423,10 +483,10 @@ export class ContentLibraryView extends ItemView {
     }
 
     const sectionHead = main.createDiv({ cls: "cld-section-head cld-recent-head" });
-    sectionHead.createEl("strong", { text: isDashboardHome ? "最近查看" : source?.name || "内容" });
+    sectionHead.createEl("strong", { text: isDashboardHome ? t("最近查看") : source?.name || t("内容") });
     const hasViewedItems = isDashboardHome && items.some((item) => this.plugin.viewedAt(item.file) > 0);
     sectionHead.createEl("small", {
-      text: isDashboardHome && !hasViewedItems ? "暂无查看记录 · 先展示最新文章" : `${items.length} 项`,
+      text: isDashboardHome && !hasViewedItems ? t("暂无查看记录 · 先展示最新文章") : t("{count} 项", { count: items.length }),
     });
     const grid = main.createDiv({ cls: "cld-library-grid cld-recent-grid" });
     for (const item of items.slice(0, 20)) this.renderContentCard(grid, item);
@@ -436,25 +496,25 @@ export class ContentLibraryView extends ItemView {
     const playlists = items.filter((item) => Boolean(item.playlistUrl));
     const sectionHead = main.createDiv({ cls: "cld-section-head cld-music-section-head" });
     const heading = sectionHead.createDiv();
-    heading.createEl("strong", { text: "音乐收藏" });
-    heading.createEl("p", { text: "歌单内容来自网易云，点击歌曲后在官方页面播放" });
+    heading.createEl("strong", { text: t("音乐收藏") });
+    heading.createEl("p", { text: t("歌单内容来自网易云，点击歌曲后在官方页面播放") });
     const actions = sectionHead.createDiv({ cls: "cld-music-section-actions" });
-    actions.createEl("small", { text: `${playlists.length} 个歌单` });
-    const add = actions.createEl("button", { cls: "cld-text-button", text: "添加歌单", attr: { type: "button" } });
+    actions.createEl("small", { text: t("{count} 个歌单", { count: playlists.length }) });
+    const add = actions.createEl("button", { cls: "cld-text-button", text: t("添加歌单"), attr: { type: "button" } });
     add.addEventListener("click", () => {
       const source = this.activeSource();
       if (!source) return;
       new MusicPlaylistModal(this.app, source.name, async (url, customTitle) => {
         const playlist = await this.plugin.getNetEasePlaylist(url);
-        const file = await this.plugin.createMusicPlaylistNote(source, url, customTitle || playlist?.title || (isQqMusicUrl(url) ? "QQ音乐歌单" : "网易云歌单"));
-        new Notice(`已添加歌单：${file.basename}`);
+        const file = await this.plugin.createMusicPlaylistNote(source, url, customTitle || playlist?.title || (isQqMusicUrl(url) ? t("QQ音乐歌单") : t("网易云歌单")));
+        new Notice(t("已添加歌单：{name}", { name: file.basename }));
         await this.refresh();
       }).open();
     });
     if (!playlists.length) {
       const empty = main.createDiv({ cls: "cld-empty cld-glass" });
-      empty.createEl("h3", { text: "还没有歌单" });
-      empty.createEl("p", { text: "在音乐收藏文件夹里新建 Markdown 文件，并填写 playlist_url。" });
+      empty.createEl("h3", { text: t("还没有歌单") });
+      empty.createEl("p", { text: t("在音乐收藏文件夹里新建 Markdown 文件，并填写 playlist_url。") });
       return;
     }
     const detailItem = playlists.find((item) => item.file.path === this.musicDetailItemPath);
@@ -473,20 +533,20 @@ export class ContentLibraryView extends ItemView {
   }
 
   private renderMusicPlaylistCard(parent: HTMLElement, item: ContentItem, playlist: NetEasePlaylist | null, preview: WebPreview | null): void {
-    const card = parent.createEl("button", { cls: "cld-music-card cld-glass", attr: { type: "button", "aria-label": `打开${item.title}` } });
+    const card = parent.createEl("button", { cls: "cld-music-card cld-glass", attr: { type: "button", "aria-label": t("打开{title}", { title: item.title }) } });
     const cover = card.createDiv({ cls: "cld-music-card-cover" });
     const coverUrl = playlist?.cover || item.cover || preview?.image || "";
     if (coverUrl) cover.style.backgroundImage = `url("${coverUrl.replace(/"/g, "%22")}")`;
     else {
       setIcon(cover.createSpan(), "music-2");
-      cover.createEl("small", { text: "音乐" });
+      cover.createEl("small", { text: t("音乐") });
     }
     const copy = card.createDiv({ cls: "cld-music-card-copy" });
-    const platform = isQqMusicUrl(item.playlistUrl) ? "QQ音乐" : "网易云音乐";
-    const contentType = playlist?.collectionType === "song" ? "单曲" : playlist?.collectionType === "album" ? "专辑" : isNetEaseProgramUrl(item.playlistUrl) ? "节目" : "歌单";
+    const platform = isQqMusicUrl(item.playlistUrl) ? t("QQ音乐") : t("网易云音乐");
+    const contentType = playlist?.collectionType === "song" ? t("单曲") : playlist?.collectionType === "album" ? t("专辑") : isNetEaseProgramUrl(item.playlistUrl) ? t("节目") : t("歌单");
     copy.createEl("small", { text: `${platform} · ${contentType}` });
     copy.createEl("h3", { text: item.title });
-    copy.createEl("p", { text: playlist ? `${playlist.trackCount} 条内容 · 点击查看` : "点击查看详情" });
+    copy.createEl("p", { text: playlist ? t("{count} 条内容 · 点击查看", { count: playlist.trackCount }) : t("点击查看详情") });
     card.addEventListener("click", () => {
       this.musicDetailItemPath = item.file.path;
       void this.refresh();
@@ -494,7 +554,7 @@ export class ContentLibraryView extends ItemView {
   }
 
   private async renderMusicPlaylist(parent: HTMLElement, item: ContentItem, playlist: NetEasePlaylist | null, preview: WebPreview | null): Promise<void> {
-    const back = parent.createEl("button", { cls: "cld-text-button cld-music-back", text: "‹ 返回音乐收藏", attr: { type: "button" } });
+    const back = parent.createEl("button", { cls: "cld-text-button cld-music-back", text: t("‹ 返回音乐收藏"), attr: { type: "button" } });
     back.addEventListener("click", () => {
       this.musicDetailItemPath = null;
       void this.refresh();
@@ -506,12 +566,12 @@ export class ContentLibraryView extends ItemView {
     if (coverUrl) cover.style.backgroundImage = `url("${coverUrl.replace(/"/g, "%22")}")`;
     else {
       setIcon(cover.createSpan(), "music-2");
-      cover.createEl("small", { text: "网易云歌单" });
+      cover.createEl("small", { text: t("网易云歌单") });
     }
     const expanded = this.expandedMusicPlaylists.has(item.file.path);
     cover.setAttr("role", "button");
     cover.setAttr("tabindex", "0");
-    cover.setAttr("aria-label", expanded ? "收起列表" : "展开列表");
+    cover.setAttr("aria-label", expanded ? t("收起列表") : t("展开列表"));
     cover.addEventListener("click", () => {
       if (expanded) this.expandedMusicPlaylists.delete(item.file.path);
       else this.expandedMusicPlaylists.add(item.file.path);
@@ -523,25 +583,25 @@ export class ContentLibraryView extends ItemView {
       cover.click();
     });
     const copy = head.createDiv({ cls: "cld-music-playlist-copy" });
-    const platform = isQqMusicUrl(item.playlistUrl) ? "QQ音乐" : "网易云音乐";
-    const contentType = playlist?.collectionType === "song" ? "单曲" : playlist?.collectionType === "album" ? "专辑" : isNetEaseProgramUrl(item.playlistUrl) ? "节目" : "歌单";
+    const platform = isQqMusicUrl(item.playlistUrl) ? t("QQ音乐") : t("网易云音乐");
+    const contentType = playlist?.collectionType === "song" ? t("单曲") : playlist?.collectionType === "album" ? t("专辑") : isNetEaseProgramUrl(item.playlistUrl) ? t("节目") : t("歌单");
     copy.createEl("small", { text: `${platform} · ${contentType}` });
-    const title = copy.createEl("h3", { text: item.title, attr: { title: "点击编辑名称" } });
+    const title = copy.createEl("h3", { text: item.title, attr: { title: t("点击编辑名称") } });
     title.addEventListener("click", () => this.openMusicPlaylistNameEditor(item));
     const fallbackText = isNetEaseProgramUrl(item.playlistUrl)
-      ? "这是网易云节目链接，不是标准歌单；点击后打开对应页面"
+      ? t("这是网易云节目链接，不是标准歌单；点击后打开对应页面")
       : isQqMusicUrl(item.playlistUrl)
-        ? "QQ 音乐歌单 · 点击后在 QQ 音乐 App 打开"
-        : "歌单暂时无法同步，仍可打开原始链接";
-    copy.createEl("p", { text: playlist ? `${playlist.creator} · ${playlist.trackCount} 首歌曲` : fallbackText });
+        ? t("QQ 音乐歌单 · 点击后在 QQ 音乐 App 打开")
+        : t("歌单暂时无法同步，仍可打开原始链接");
+    copy.createEl("p", { text: playlist ? `${playlist.creator} · ${t("{count} 首歌曲", { count: playlist.trackCount })}` : fallbackText });
     const actions = head.createDiv({ cls: "cld-music-playlist-actions" });
-    const edit = actions.createEl("button", { cls: "cld-text-button", text: "编辑名称", attr: { type: "button" } });
+    const edit = actions.createEl("button", { cls: "cld-text-button", text: t("编辑名称"), attr: { type: "button" } });
     edit.addEventListener("click", (event) => {
       event.stopPropagation();
       this.openMusicPlaylistNameEditor(item);
     });
     if (!playlist?.tracks.length) {
-      card.createEl("small", { cls: "cld-music-track-more", text: isQqMusicUrl(item.playlistUrl) ? "QQ 音乐歌单的歌曲列表暂未同步，点击上方按钮在 App 中查看。" : "这个链接没有可同步的歌曲列表，请确认它是 music.163.com/playlist?id=... 歌单链接。" });
+      card.createEl("small", { cls: "cld-music-track-more", text: isQqMusicUrl(item.playlistUrl) ? t("QQ 音乐歌单的歌曲列表暂未同步，点击上方按钮在 App 中查看。") : t("这个链接没有可同步的歌曲列表，请确认它是 music.163.com/playlist?id=... 歌单链接。") });
       return;
     }
     const visibleTracks = expanded ? playlist.tracks : playlist.tracks.slice(0, 30);
@@ -555,34 +615,36 @@ export class ContentLibraryView extends ItemView {
       const trackCopy = row.createSpan({ cls: "cld-music-track-copy" });
       trackCopy.createEl("strong", { text: track.title });
       trackCopy.createEl("small", { text: `${track.artist}${track.album ? ` · ${track.album}` : ""}` });
-      row.createSpan({ cls: "cld-music-track-open", text: "App 播放 ↗" });
+      row.createSpan({ cls: "cld-music-track-open", text: t("App 播放 ↗") });
       row.addEventListener("click", () => openMusicApp(track.url || item.playlistUrl));
     }
     const count = card.createDiv({ cls: "cld-music-track-count" });
-    count.createEl("small", { text: `已显示 ${visibleTracks.length} / 共 ${playlist.trackCount} 条` });
+    count.createEl("small", { text: t("已显示 {shown} / 共 {total} 条", { shown: visibleTracks.length, total: playlist.trackCount }) });
     if (playlist.tracks.length > 30) {
-      const toggle = count.createEl("button", { cls: "cld-text-button", text: expanded ? "收起" : `显示全部（${playlist.tracks.length} 条）`, attr: { type: "button" } });
+      const toggle = count.createEl("button", { cls: "cld-text-button", text: expanded ? t("收起") : t("显示全部（{count} 条）", { count: playlist.tracks.length }), attr: { type: "button" } });
       toggle.addEventListener("click", () => {
         if (expanded) this.expandedMusicPlaylists.delete(item.file.path);
         else this.expandedMusicPlaylists.add(item.file.path);
         void this.refresh();
       });
     }
-    if (playlist.tracks.length < playlist.trackCount) card.createEl("small", { cls: "cld-music-track-more", text: `已同步 ${playlist.tracks.length} 条，完整列表请在平台 App 查看` });
+    if (playlist.tracks.length < playlist.trackCount) card.createEl("small", { cls: "cld-music-track-more", text: t("已同步 {count} 条，完整列表请在平台 App 查看", { count: playlist.tracks.length }) });
   }
 
   private openMusicPlaylistNameEditor(item: ContentItem): void {
     new MusicPlaylistNameModal(this.app, item.title, async (title) => {
       await this.plugin.renameMusicPlaylistNote(item.file, title);
-      new Notice("歌单名称已更新。");
+      new Notice(t("歌单名称已更新。"));
       await this.refresh();
     }).open();
   }
 
   private renderHomeBanner(main: HTMLElement, source: ContentSource | undefined, itemCount: number, podcast: boolean): void {
     const hero = main.createEl("section", { cls: "cld-hero cld-glass" });
-    const banner = this.plugin.settings.theme === "glass"
-      ? this.plugin.indexer.resolveResource(this.plugin.settings.bannerPath)
+    const pack = this.plugin.packs.active();
+    const theme = pack ? pack.base : this.plugin.settings.theme;
+    const banner = theme === "glass"
+      ? this.plugin.packs.bannerFor(pack) || this.plugin.indexer.resolveResource(this.plugin.settings.bannerPath)
       : "";
     if (banner) {
       hero.addClass("has-image");
@@ -595,9 +657,9 @@ export class ContentLibraryView extends ItemView {
       }
     }
     const heroCopy = hero.createDiv({ cls: "cld-hero-copy" });
-    heroCopy.createEl("small", { text: podcast ? `播客 · ${itemCount} 项` : source ? `${SOURCE_KIND_LABELS[source.kind]} · ${itemCount} 项` : "继续阅读 · 今天" });
-    heroCopy.createEl("h2", { text: podcast ? source?.name || "Podcast" : source?.name || this.plugin.settings.dashboardTitle });
-    heroCopy.createEl("p", { text: source ? source.folder : "书、播客、新闻和灵感，都在一个地方。" });
+    heroCopy.createEl("small", { text: podcast ? `${t("播客")} · ${t("{count} 项", { count: itemCount })}` : source ? `${t(SOURCE_KIND_LABELS[source.kind])} · ${t("{count} 项", { count: itemCount })}` : t("继续阅读 · 今天") });
+    heroCopy.createEl("h2", { text: podcast ? source?.name || "Podcast" : source?.name || t(this.plugin.settings.dashboardTitle) });
+    heroCopy.createEl("p", { text: source ? source.folder : t("书、播客、新闻和灵感，都在一个地方。") });
   }
 
   private async renderDailyInspiration(main: HTMLElement): Promise<void> {
@@ -623,18 +685,18 @@ export class ContentLibraryView extends ItemView {
     const { item, text } = candidate;
     const card = main.createEl("section", { cls: "cld-inspiration cld-glass" });
     const copy = card.createDiv({ cls: "cld-inspiration-copy" });
-    copy.createEl("small", { text: `今日启发 · ${item.source.name}` });
+    copy.createEl("small", { text: `${t("今日启发")} · ${item.source.name}` });
     copy.createEl("strong", { text: `“${text}”` });
-    copy.createEl("p", { text: `来自《${item.title.replace(/-笔记$/, "")}》` });
+    copy.createEl("p", { text: t("来自《{title}》", { title: item.title.replace(/-(笔记|notes)$/, "") }) });
     const actions = card.createDiv({ cls: "cld-inspiration-actions" });
-    const open = actions.createEl("button", { cls: "cld-text-button", text: "打开", attr: { type: "button" } });
+    const open = actions.createEl("button", { cls: "cld-text-button", text: t("打开"), attr: { type: "button" } });
     open.addEventListener("click", () => {
       void this.plugin.recordView(item.file);
       this.selected = item;
       this.detailOpen = true;
       void this.refresh();
     });
-    const next = actions.createEl("button", { cls: "cld-icon-button", attr: { type: "button", "aria-label": "换一条启发" } });
+    const next = actions.createEl("button", { cls: "cld-icon-button", attr: { type: "button", "aria-label": t("换一条启发") } });
     setIcon(next, "refresh-cw");
     next.addEventListener("click", () => { this.inspirationOffset += 1; void this.refresh(); });
   }
@@ -658,7 +720,7 @@ export class ContentLibraryView extends ItemView {
 
     const activity = main.createEl("section", { cls: "cld-activity cld-glass" });
     const activityHead = activity.createDiv({ cls: "cld-section-head" });
-    activityHead.createEl("strong", { text: "内容更新" });
+    activityHead.createEl("strong", { text: t("内容更新") });
     const maxCount = Math.max(0, ...counts.values());
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -679,7 +741,7 @@ export class ContentLibraryView extends ItemView {
     for (let day = 0; day < 7; day += 1) {
       const date = new Date(start);
       date.setDate(start.getDate() + day);
-      weekdays.createSpan({ text: new Intl.DateTimeFormat("zh-CN", { weekday: "narrow" }).format(date) });
+      weekdays.createSpan({ text: new Intl.DateTimeFormat(dateLocale(), { weekday: "narrow" }).format(date) });
     }
     const grid = body.createDiv({ cls: "cld-activity-grid" });
     grid.style.setProperty("--cld-activity-columns", String(weeks));
@@ -694,7 +756,7 @@ export class ContentLibraryView extends ItemView {
         const level = count && maxCount ? Math.max(1, Math.ceil((count / maxCount) * 4)) : 0;
         column.createSpan({
           cls: `cld-activity-cell cld-activity-level-${level}`,
-          attr: { title: `${key} · ${count} 次更新`, "aria-label": `${key}，${count} 次更新` },
+          attr: { title: `${key} · ${t("{count} 次更新", { count })}`, "aria-label": `${key}, ${t("{count} 次更新", { count })}` },
         });
       }
     }
@@ -707,14 +769,14 @@ export class ContentLibraryView extends ItemView {
     const sectionHead = main.createDiv({ cls: "cld-section-head cld-podcast-section-head" });
     const heading = sectionHead.createDiv();
     heading.createEl("strong", { text: title });
-    heading.createEl("p", { text: "选择节目，右侧立即播放" });
+    heading.createEl("p", { text: t("选择节目，右侧立即播放") });
     const tools = sectionHead.createDiv({ cls: "cld-podcast-list-tools" });
-    tools.createEl("span", { text: this.searchQuery ? `${visibleItems.length} 个结果` : `${items.length} 集未听` });
+    tools.createEl("span", { text: this.searchQuery ? t("{count} 个结果", { count: visibleItems.length }) : t("{count} 集未听", { count: items.length }) });
 
     if (!visibleItems.length) {
       const empty = main.createDiv({ cls: "cld-empty cld-glass" });
-      empty.createEl("h3", { text: "这个栏目还没有节目" });
-      empty.createEl("p", { text: "可以选择包含 Markdown 节目笔记或音频文件的 Vault 文件夹。" });
+      empty.createEl("h3", { text: t("这个栏目还没有节目") });
+      empty.createEl("p", { text: t("可以选择包含 Markdown 节目笔记或音频文件的 Vault 文件夹。") });
       return;
     }
 
@@ -768,8 +830,8 @@ export class ContentLibraryView extends ItemView {
     probe.src = url;
   }
 
-  private metric(parent: HTMLElement, label: string, value: string, progress: number): void {
-    const card = parent.createDiv({ cls: "cld-metric cld-glass", attr: { "data-metric": label } });
+  private metric(parent: HTMLElement, id: string, label: string, value: string, progress: number): void {
+    const card = parent.createDiv({ cls: "cld-metric cld-glass", attr: { "data-metric": id } });
     const head = card.createDiv();
     head.createSpan({ text: label });
     head.createEl("strong", { text: value });
@@ -799,7 +861,7 @@ export class ContentLibraryView extends ItemView {
       const badge = cover.createDiv({ cls: "cld-podcast-card-badge" });
       const badgeIcon = badge.createSpan();
       setIcon(badgeIcon, "play");
-      badge.createSpan({ text: "播客" });
+      badge.createSpan({ text: t("播客") });
     }
     if (item.externalUrl && coverUrl) {
       const cover = button.querySelector<HTMLElement>(".cld-card-cover");
@@ -837,7 +899,7 @@ export class ContentLibraryView extends ItemView {
 
   private contentMeta(item: ContentItem): string {
     const date = this.youtubeGeneratedDate(item);
-    if (date) return `生成于 ${date}`;
+    if (date) return t("生成于 {date}", { date });
     const details = item.progress ? `${Math.round(item.progress)}% · ${item.subtitle}` : item.subtitle;
     return item.file.extension === "md" ? `${formatDate(item.created)} · ${details}` : details;
   }
@@ -864,7 +926,7 @@ export class ContentLibraryView extends ItemView {
     const isGithubBrief = item.source.folder.toLowerCase().includes("github trending");
     if (isGithubBrief) {
       const match = content.match(/\*\*中文简介：\*\*\s*([^<\n]+)(?:<br>)?\s*\*\*适用场景：\*\*\s*([^<\n]+)/);
-      if (match) return `${match[1].trim()} 适用：${match[2].trim()}`.slice(0, 180);
+      if (match) return `${match[1].trim()} ${t("适用：")}${match[2].trim()}`.slice(0, 180);
     }
     return extractInspirationSentences(content, false)[0] || "";
   }
@@ -885,10 +947,10 @@ export class ContentLibraryView extends ItemView {
       ? "complete"
       : progress > 0 || saved?.state === "in-progress" ? "in-progress" : "unread";
     element.addClass(`is-${state}`);
-    const noun = item.kind === "podcast" ? "听" : "读";
-    if (state === "complete") {
-      element.setAttr("aria-label", `已${noun}完`);
-      element.setAttr("title", `已${noun}完`);
+        if (state === "complete") {
+      const doneLabel = item.kind === "podcast" ? t("已听完") : t("已读完");
+      element.setAttr("aria-label", doneLabel);
+      element.setAttr("title", doneLabel);
       setIcon(element, "check");
       return;
     }
@@ -897,8 +959,8 @@ export class ContentLibraryView extends ItemView {
       element.createSpan({ cls: "cld-status-progress", text: `${Math.max(1, Math.round(progress))}%` });
     }
     const label = state === "in-progress"
-      ? item.kind === "podcast" ? "收听中" : "阅读中"
-      : `未${noun}`;
+      ? item.kind === "podcast" ? t("收听中") : t("阅读中")
+      : item.kind === "podcast" ? t("未听") : t("未读");
     element.setAttr("aria-label", label);
     element.setAttr("title", label);
   }
@@ -914,8 +976,8 @@ export class ContentLibraryView extends ItemView {
     event.preventDefault();
     const menu = new Menu();
     const progress = this.plugin.contentProgress(item.file);
-    const completeLabel = item.kind === "podcast" ? "标记为已听完" : "标记为已读";
-    const resetLabel = item.kind === "podcast" ? "重新设为未听" : "重新设为未读";
+    const completeLabel = item.kind === "podcast" ? t("标记为已听完") : t("标记为已读");
+    const resetLabel = item.kind === "podcast" ? t("重新设为未听") : t("重新设为未读");
     if (progress?.state !== "complete") {
       menu.addItem((entry) => entry.setTitle(completeLabel).setIcon("check").onClick(async () => {
         await this.plugin.markContentComplete(item.file);
@@ -945,7 +1007,7 @@ export class ContentLibraryView extends ItemView {
           const path = await this.plugin.importImage(file, "Covers");
           await this.plugin.setCoverOverride(item, path);
         } catch (error) {
-          new Notice(error instanceof Error ? error.message : "图片导入失败。");
+          new Notice(error instanceof Error ? error.message : t("图片导入失败。"));
         }
       }, { once: true });
       input.click();
@@ -960,7 +1022,7 @@ export class ContentLibraryView extends ItemView {
     const back = toolbar.createEl("button", { cls: "cld-text-button", attr: { type: "button" } });
     const backIcon = back.createSpan();
     setIcon(backIcon, "arrow-left");
-    back.createSpan({ text: this.articleReturnItem ? "返回播客列表" : "返回" });
+    back.createSpan({ text: this.articleReturnItem ? t("返回播客列表") : t("返回") });
     back.addEventListener("click", () => {
       if (this.articleReturnItem) {
         this.returnToPodcastList();
@@ -988,7 +1050,7 @@ export class ContentLibraryView extends ItemView {
     const header = grid.createEl("header", { cls: "cld-reader-header" });
     const headerCopy = header.createDiv();
     const generatedDate = this.youtubeGeneratedDate(item);
-    headerCopy.createEl("small", { text: generatedDate ? `${item.source.name} · 生成于 ${generatedDate}` : `${item.source.name} · 创建于 ${formatDate(item.created)}` });
+    headerCopy.createEl("small", { text: generatedDate ? `${item.source.name} · ${t("生成于 {date}", { date: generatedDate })}` : `${item.source.name} · ${t("创建于 {date}", { date: formatDate(item.created) })}` });
     headerCopy.createEl("h1", { text: item.title });
     const headerActions = header.createDiv({ cls: "cld-reader-header-actions" });
     const readState = headerActions.createEl("button", { cls: "cld-text-button cld-read-state-button", attr: { type: "button" } });
@@ -1004,20 +1066,20 @@ export class ContentLibraryView extends ItemView {
       this.updateReadStateButton(readState, item);
       this.updateRenderedStatus(item);
     });
-    const open = headerActions.createEl("button", { cls: "cld-text-button", text: "在 Obsidian 中打开", attr: { type: "button" } });
+    const open = headerActions.createEl("button", { cls: "cld-text-button", text: t("在 Obsidian 中打开"), attr: { type: "button" } });
     open.addEventListener("click", () => void this.openFile(item.file));
-    const edit = headerActions.createEl("button", { cls: "cld-text-button cld-edit-note-button", text: "编辑笔记", attr: { type: "button" } });
+    const edit = headerActions.createEl("button", { cls: "cld-text-button cld-edit-note-button", text: t("编辑笔记"), attr: { type: "button" } });
     edit.addEventListener("click", () => this.startInlineNoteEdit(grid, item, content));
     if (originalPath) {
-      const originalArticle = headerActions.createEl("button", { cls: "cld-text-button", text: "阅读原文章", attr: { type: "button" } });
+      const originalArticle = headerActions.createEl("button", { cls: "cld-text-button", text: t("阅读原文章"), attr: { type: "button" } });
       originalArticle.addEventListener("click", () => this.openArticlePath(originalPath));
     }
     if (item.kind === "book") {
-      const weave = headerActions.createEl("button", { cls: "cld-text-button", text: "打开 Weave 阅读器", attr: { type: "button" } });
+      const weave = headerActions.createEl("button", { cls: "cld-text-button", text: t("打开 Weave 阅读器"), attr: { type: "button" } });
       weave.addEventListener("click", () => this.executeCommand("weave-epub-reader:open-active-epub-reader"));
     }
     if (item.externalUrl) {
-      const original = headerActions.createEl("button", { cls: "cld-text-button", text: "打开原始网页", attr: { type: "button" } });
+      const original = headerActions.createEl("button", { cls: "cld-text-button", text: t("打开原始网页"), attr: { type: "button" } });
       original.addEventListener("click", () => window.open(item.externalUrl, "_blank"));
     }
     if (!this.articleReturnItem) this.renderReadingNavigation(headerActions, item);
@@ -1033,19 +1095,19 @@ export class ContentLibraryView extends ItemView {
     this.renderRelatedLinks(grid, content, item);
     const notes = grid.createEl("aside", { cls: "cld-note-panel" });
     if (isAnnotation) {
-      notes.createEl("small", { text: "批注来源" });
-      notes.createEl("p", { text: originalPath || "这条批注没有记录来源文章。" });
+      notes.createEl("small", { text: t("批注来源") });
+      notes.createEl("p", { text: originalPath || t("这条批注没有记录来源文章。") });
       if (originalPath) {
-        const originalArticle = notes.createEl("button", { cls: "cld-primary-button", text: "阅读原文章", attr: { type: "button" } });
+        const originalArticle = notes.createEl("button", { cls: "cld-primary-button", text: t("阅读原文章"), attr: { type: "button" } });
         originalArticle.addEventListener("click", () => this.openArticlePath(originalPath));
       }
       return;
     }
-    notes.createEl("small", { text: "阅读批注" });
-    notes.createEl("p", { text: "选中文字后可直接收藏摘录，或带入这里继续写笔记。" });
-    const quote = notes.createEl("textarea", { cls: "cld-textarea", attr: { rows: "3", placeholder: "粘贴摘录或原文…", "aria-label": "摘录原文" } });
-    const thought = notes.createEl("textarea", { cls: "cld-textarea", attr: { rows: "5", placeholder: "写下你的批注…", "aria-label": "阅读批注" } });
-    const save = notes.createEl("button", { cls: "cld-primary-button", text: "保存到批注笔记", attr: { type: "button" } });
+    notes.createEl("small", { text: t("阅读批注") });
+    notes.createEl("p", { text: t("选中文字后可直接收藏摘录，或带入这里继续写笔记。") });
+    const quote = notes.createEl("textarea", { cls: "cld-textarea", attr: { rows: "3", placeholder: t("粘贴摘录或原文…"), "aria-label": t("摘录原文") } });
+    const thought = notes.createEl("textarea", { cls: "cld-textarea", attr: { rows: "5", placeholder: t("写下你的批注…"), "aria-label": t("阅读批注") } });
+    const save = notes.createEl("button", { cls: "cld-primary-button", text: t("保存到批注笔记"), attr: { type: "button" } });
     const saved = notes.createDiv({ cls: "cld-saved-notes" });
     await this.renderSavedAnnotations(saved, item, article);
     save.addEventListener("click", async () => {
@@ -1053,16 +1115,16 @@ export class ContentLibraryView extends ItemView {
       try {
         const file = await this.plugin.appendAnnotation(item, thought.value, quote.value);
         if (!file) {
-          new Notice("请先写下批注或摘录。");
+          new Notice(t("请先写下批注或摘录。"));
           return;
         }
         thought.value = "";
         quote.value = "";
         await this.renderSavedAnnotations(saved, item, article);
         await this.applyAnnotationHighlights(article, item);
-        new Notice(`已保存到 ${file.path}`);
+        new Notice(t("已保存到 {path}", { path: file.path }));
       } catch (error) {
-        new Notice(error instanceof Error ? `保存失败：${error.message}` : "保存失败，请重试。");
+        new Notice(error instanceof Error ? t("保存失败：{message}", { message: error.message }) : t("保存失败，请重试。"));
       } finally {
         save.disabled = false;
       }
@@ -1074,11 +1136,11 @@ export class ContentLibraryView extends ItemView {
     const collect = selectionToolbar.createEl("button", { cls: "cld-selection-action", attr: { type: "button" } });
     const collectIcon = collect.createSpan();
     setIcon(collectIcon, "star");
-    collect.createSpan({ text: "收藏摘录" });
+    collect.createSpan({ text: t("收藏摘录") });
     const annotate = selectionToolbar.createEl("button", { cls: "cld-selection-action", attr: { type: "button" } });
     const annotateIcon = annotate.createSpan();
     setIcon(annotateIcon, "notebook-pen");
-    annotate.createSpan({ text: "写笔记" });
+    annotate.createSpan({ text: t("写笔记") });
     for (const button of [collect, annotate]) {
       button.addEventListener("mousedown", (event) => event.preventDefault());
     }
@@ -1092,7 +1154,7 @@ export class ContentLibraryView extends ItemView {
       if (file) {
         await this.renderSavedAnnotations(saved, item, article);
         await this.applyAnnotationHighlights(article, item);
-        new Notice(`摘录已收藏到 ${file.path}`);
+        new Notice(t("摘录已收藏到 {path}", { path: file.path }));
       }
       clearSelection();
     });
@@ -1145,16 +1207,16 @@ export class ContentLibraryView extends ItemView {
     const editor = grid.ownerDocument.createElement("section");
     editor.className = "cld-inline-note-editor cld-glass";
     const heading = editor.createEl("div", { cls: "cld-inline-note-editor-heading" });
-    heading.createEl("strong", { text: "编辑笔记" });
+    heading.createEl("strong", { text: t("编辑笔记") });
     heading.createEl("small", { text: item.file.path });
     const textarea = editor.createEl("textarea", {
       cls: "cld-note-source-editor",
-      attr: { "aria-label": "Markdown 笔记内容", spellcheck: "false" },
+      attr: { "aria-label": t("Markdown 笔记内容"), spellcheck: "false" },
     });
     textarea.value = content;
     const actions = editor.createDiv({ cls: "cld-inline-note-editor-actions" });
-    const cancel = actions.createEl("button", { cls: "cld-text-button", text: "取消", attr: { type: "button" } });
-    const save = actions.createEl("button", { cls: "cld-primary-button", text: "保存笔记", attr: { type: "button" } });
+    const cancel = actions.createEl("button", { cls: "cld-text-button", text: t("取消"), attr: { type: "button" } });
+    const save = actions.createEl("button", { cls: "cld-primary-button", text: t("保存笔记"), attr: { type: "button" } });
     article.replaceWith(editor);
     textarea.focus();
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
@@ -1166,12 +1228,12 @@ export class ContentLibraryView extends ItemView {
       cancel.disabled = true;
       try {
         await this.app.vault.modify(item.file, textarea.value);
-        new Notice("笔记已保存。");
+        new Notice(t("笔记已保存。"));
         this.detailOpen = true;
         this.selected = this.plugin.indexer.itemForFile(item.file, item.source);
         await this.refresh();
       } catch (error) {
-        new Notice(error instanceof Error ? `保存失败：${error.message}` : "保存失败，请重试。");
+        new Notice(error instanceof Error ? t("保存失败：{message}", { message: error.message }) : t("保存失败，请重试。"));
         save.disabled = false;
         cancel.disabled = false;
       }
@@ -1185,8 +1247,8 @@ export class ContentLibraryView extends ItemView {
       .sort((a, b) => b.created - a.created);
     const index = queue.findIndex((entry) => entry.id === item.id);
     if (index < 0 || queue.length < 2) return;
-    const previous = parent.createEl("button", { cls: "cld-text-button", text: "← 上一篇", attr: { type: "button" } });
-    const next = parent.createEl("button", { cls: "cld-text-button", text: "下一篇 →", attr: { type: "button" } });
+    const previous = parent.createEl("button", { cls: "cld-text-button", text: t("← 上一篇"), attr: { type: "button" } });
+    const next = parent.createEl("button", { cls: "cld-text-button", text: t("下一篇 →"), attr: { type: "button" } });
     previous.disabled = index === 0;
     next.disabled = index === queue.length - 1;
     previous.addEventListener("click", () => this.openReadingItem(queue[index - 1]));
@@ -1206,7 +1268,7 @@ export class ContentLibraryView extends ItemView {
     button.empty();
     const icon = button.createSpan();
     setIcon(icon, complete ? "check" : "circle-check");
-    button.createSpan({ text: complete ? "已读 · 设为未读" : "标记已读" });
+    button.createSpan({ text: complete ? t("已读 · 设为未读") : t("标记已读") });
   }
 
   private setupReadingCompletion(item: ContentItem, button: HTMLButtonElement): void {
@@ -1246,7 +1308,7 @@ export class ContentLibraryView extends ItemView {
     if (item.externalUrl && !links.some((entry) => entry.url === item.externalUrl)) links.unshift({ label: item.title, url: item.externalUrl });
     if (!links.length) return;
     const section = parent.createEl("section", { cls: "cld-related-links" });
-    section.createEl("strong", { text: "相关链接" });
+    section.createEl("strong", { text: t("相关链接") });
     const list = section.createDiv({ cls: "cld-related-link-list" });
     for (const entry of links.slice(0, 3)) {
       const card = list.createEl("button", { cls: "cld-related-link-card cld-glass", attr: { type: "button" } });
@@ -1254,7 +1316,7 @@ export class ContentLibraryView extends ItemView {
       const copy = card.createDiv({ cls: "cld-related-link-copy" });
       copy.createEl("small", { text: webHost(entry.url) });
       const title = copy.createEl("strong", { text: entry.label || webHost(entry.url) });
-      const description = copy.createEl("p", { text: "打开原始网页" });
+      const description = copy.createEl("p", { text: t("打开原始网页") });
       card.addEventListener("click", () => window.open(entry.url, "_blank"));
       void this.plugin.getWebPreview(entry.url).then((preview) => {
         if (!card.isConnected) return;
@@ -1270,16 +1332,16 @@ export class ContentLibraryView extends ItemView {
     parent.empty();
     const file = this.plugin.annotationFile(item);
     if (!file) {
-      parent.createEl("small", { text: "保存后会在这里显示，重新打开文章也不会消失。" });
+      parent.createEl("small", { text: t("保存后会在这里显示，重新打开文章也不会消失。") });
       return;
     }
     const head = parent.createDiv({ cls: "cld-saved-notes-head" });
-    head.createEl("strong", { text: "已保存笔记" });
-    const open = head.createEl("button", { cls: "cld-text-button", text: "在 Obsidian 中打开", attr: { type: "button" } });
+    head.createEl("strong", { text: t("已保存笔记") });
+    const open = head.createEl("button", { cls: "cld-text-button", text: t("在 Obsidian 中打开"), attr: { type: "button" } });
     open.addEventListener("click", () => void this.openFile(file));
     const annotations = storedAnnotationsFor(await this.app.vault.cachedRead(file), item.file.path);
     if (!annotations.length) {
-      parent.createEl("small", { text: "保存后会在这里显示，重新打开文章也不会消失。" });
+      parent.createEl("small", { text: t("保存后会在这里显示，重新打开文章也不会消失。") });
       return;
     }
     const list = parent.createDiv({ cls: "cld-saved-annotation-list" });
@@ -1289,7 +1351,7 @@ export class ContentLibraryView extends ItemView {
         card.addClass("is-locatable");
         card.setAttr("role", "button");
         card.setAttr("tabindex", "0");
-        card.setAttr("aria-label", "定位到文章原文");
+        card.setAttr("aria-label", t("定位到文章原文"));
         const locate = () => this.scrollToAnnotation(article, annotation);
         card.addEventListener("click", locate);
         card.addEventListener("keydown", (event) => {
@@ -1302,9 +1364,9 @@ export class ContentLibraryView extends ItemView {
       card.createEl("small", { text: annotation.heading.replace(/^##\s*/, "") });
       if (annotation.quote) card.createEl("blockquote", { text: annotation.quote });
       if (annotation.note) card.createEl("p", { text: annotation.note });
-      if (!annotation.note && !annotation.quote) card.createEl("p", { text: "空白批注" });
+      if (!annotation.note && !annotation.quote) card.createEl("p", { text: t("空白批注") });
       const actions = card.createDiv({ cls: "cld-saved-annotation-actions" });
-      const edit = actions.createEl("button", { cls: "cld-text-button", text: "编辑", attr: { type: "button" } });
+      const edit = actions.createEl("button", { cls: "cld-text-button", text: t("编辑"), attr: { type: "button" } });
       edit.addEventListener("click", (event) => {
         event.stopPropagation();
         new AnnotationEditModal(this.app, annotation, async (quote, note) => {
@@ -1312,7 +1374,7 @@ export class ContentLibraryView extends ItemView {
         await this.refresh();
         }).open();
       });
-      const remove = actions.createEl("button", { cls: "cld-text-button cld-annotation-delete", text: "删除", attr: { type: "button" } });
+      const remove = actions.createEl("button", { cls: "cld-text-button cld-annotation-delete", text: t("删除"), attr: { type: "button" } });
       remove.addEventListener("click", (event) => {
         event.stopPropagation();
         new AnnotationDeleteModal(this.app, async () => {
@@ -1328,7 +1390,7 @@ export class ContentLibraryView extends ItemView {
     const highlights = Array.from(article.querySelectorAll<HTMLElement>(selector));
     const target = highlights[0];
     if (!target) {
-      new Notice("这条摘录暂时没有匹配到文章原文。", 3200);
+      new Notice(t("这条摘录暂时没有匹配到文章原文。"), 3200);
       return;
     }
     target.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
@@ -1339,9 +1401,9 @@ export class ContentLibraryView extends ItemView {
   }
 
   private async updateStoredAnnotation(item: ContentItem, annotation: StoredAnnotation, quote: string, note: string): Promise<void> {
-    if (!quote.trim() && !note.trim()) throw new Error("批注和摘录不能同时为空。");
+    if (!quote.trim() && !note.trim()) throw new Error(t("批注和摘录不能同时为空。"));
     const file = this.plugin.annotationFile(item);
-    if (!file) throw new Error("没有找到批注笔记。");
+    if (!file) throw new Error(t("没有找到批注笔记。"));
     await this.app.vault.process(file, (content) => {
       const replacement = annotationBlock(annotation, quote, note);
       return `${content.slice(0, annotation.start)}${replacement}${content.slice(annotation.end)}`;
@@ -1350,7 +1412,7 @@ export class ContentLibraryView extends ItemView {
 
   private async deleteStoredAnnotation(item: ContentItem, annotation: StoredAnnotation): Promise<void> {
     const file = this.plugin.annotationFile(item);
-    if (!file) throw new Error("没有找到批注笔记。");
+    if (!file) throw new Error(t("没有找到批注笔记。"));
     await this.app.vault.process(file, (content) => `${content.slice(0, annotation.start)}${content.slice(annotation.end)}`.replace(/\n{3,}/g, "\n\n"));
   }
 
@@ -1394,10 +1456,10 @@ export class ContentLibraryView extends ItemView {
       range.setEnd(node, segment.end);
       const highlight = article.ownerDocument.createElement("span");
       highlight.className = "cld-annotation-highlight";
-      highlight.dataset.cldAnnotation = annotation.note || "已收藏摘录";
+      highlight.dataset.cldAnnotation = annotation.note || t("已收藏摘录");
       highlight.dataset.cldAnnotationKey = String(annotation.start);
       highlight.setAttribute("tabindex", "0");
-      highlight.setAttribute("aria-label", `批注：${annotation.note || "已收藏摘录"}`);
+      highlight.setAttribute("aria-label", t("批注：{note}", { note: annotation.note || t("已收藏摘录") }));
       range.surroundContents(highlight);
     }
   }
@@ -1405,17 +1467,17 @@ export class ContentLibraryView extends ItemView {
   private renderReadingAudioPlayer(parent: HTMLElement, item: ContentItem, audioUrl: string): void {
     const player = parent.createDiv({ cls: "cld-reading-audio cld-glass" });
     const label = player.createDiv();
-    label.createEl("small", { text: "关联音频" });
+    label.createEl("small", { text: t("关联音频") });
     label.createEl("strong", { text: item.title });
-    const controls = player.createDiv({ cls: "cld-reading-audio-controls", attr: { "aria-label": "文章关联音频播放器" } });
+    const controls = player.createDiv({ cls: "cld-reading-audio-controls", attr: { "aria-label": t("文章关联音频播放器") } });
     const play = controls.createEl("button", {
       cls: "cld-reading-audio-play",
-      attr: { type: "button", "aria-label": "播放" },
+      attr: { type: "button", "aria-label": t("播放") },
     });
     setIcon(play, "play");
     const timeline = controls.createEl("input", {
       cls: "cld-audio-range",
-      attr: { type: "range", min: "0", max: "1000", value: "0", "aria-label": "播放进度" },
+      attr: { type: "range", min: "0", max: "1000", value: "0", "aria-label": t("播放进度") },
     });
     const time = controls.createEl("time", { cls: "cld-reading-audio-time", text: "0:00 / 0:00" });
     const audio = new Audio(audioUrl);
@@ -1429,7 +1491,7 @@ export class ContentLibraryView extends ItemView {
     };
     const updatePlayButton = () => {
       setIcon(play, audio.paused ? "play" : "pause");
-      play.setAttr("aria-label", audio.paused ? "播放" : "暂停");
+      play.setAttr("aria-label", audio.paused ? t("播放") : t("暂停"));
     };
     audio.addEventListener("play", () => {
       if (this.audio && this.audio !== audio) this.audio.pause();
@@ -1458,7 +1520,7 @@ export class ContentLibraryView extends ItemView {
         try {
           await audio.play();
         } catch {
-          new Notice("系统阻止了播放，请再点击一次播放键。", 3500);
+          new Notice(t("系统阻止了播放，请再点击一次播放键。"), 3500);
         }
       } else {
         audio.pause();
@@ -1482,32 +1544,32 @@ export class ContentLibraryView extends ItemView {
     this.autoplayItemId = null;
     const player = parent.createEl("section", {
       cls: "cld-continued-podcast cld-glass",
-      attr: { "aria-label": "继续播放播客" },
+      attr: { "aria-label": t("继续播放播客") },
     });
     const copy = player.createDiv({ cls: "cld-continued-podcast-copy" });
-    copy.createEl("small", { text: "正在阅读原文 · 播客继续播放" });
+    copy.createEl("small", { text: t("正在阅读原文 · 播客继续播放") });
     copy.createEl("strong", { text: item.title });
     const transport = player.createDiv({ cls: "cld-continued-podcast-transport" });
     const timeline = transport.createEl("input", {
       cls: "cld-audio-range",
-      attr: { type: "range", min: "0", max: "1000", value: "0", "aria-label": "播客播放进度" },
+      attr: { type: "range", min: "0", max: "1000", value: "0", "aria-label": t("播客播放进度") },
     });
     const timecodes = transport.createDiv({ cls: "cld-player-timecodes" });
     const currentTime = timecodes.createEl("time", { text: formatTime(audio.currentTime) });
     const duration = timecodes.createEl("time", { text: formatTime(audio.duration) });
     const actions = player.createDiv({ cls: "cld-continued-podcast-actions" });
     const controls = actions.createDiv({ cls: "cld-continued-podcast-controls" });
-    const previous = this.iconButton(controls, "skip-back", "上一条");
+    const previous = this.iconButton(controls, "skip-back", t("上一条"));
     const play = controls.createEl("button", {
       cls: "cld-play-button",
-      attr: { type: "button", "aria-label": audio.paused ? "继续播放" : "暂停" },
+      attr: { type: "button", "aria-label": audio.paused ? t("继续播放") : t("暂停") },
     });
     setIcon(play, audio.paused ? "play" : "pause");
-    const next = this.iconButton(controls, "skip-forward", "下一条");
+    const next = this.iconButton(controls, "skip-forward", t("下一条"));
     const speed = actions.createEl("button", {
       cls: "cld-speed-control",
       text: `${audio.playbackRate}×`,
-      attr: { type: "button", "aria-label": "播放速度" },
+      attr: { type: "button", "aria-label": t("播放速度") },
     });
     const updateTimeline = () => {
       const total = Number.isFinite(audio.duration) ? audio.duration : 0;
@@ -1526,7 +1588,7 @@ export class ContentLibraryView extends ItemView {
       if (!this.playAfterEnd(item)) {
         this.playing = false;
         setIcon(play, "play");
-        play.setAttr("aria-label", "继续播放");
+        play.setAttr("aria-label", t("继续播放"));
       }
     };
     previous.addEventListener("click", () => void this.playAdjacentArticle(item, -1));
@@ -1538,15 +1600,15 @@ export class ContentLibraryView extends ItemView {
           this.beginAudioProgress(item);
           this.playing = true;
           setIcon(play, "pause");
-          play.setAttr("aria-label", "暂停");
+          play.setAttr("aria-label", t("暂停"));
         } catch {
-          new Notice("系统阻止了自动播放，请再点击一次播放键。", 3500);
+          new Notice(t("系统阻止了自动播放，请再点击一次播放键。"), 3500);
         }
       } else {
         audio.pause();
         this.playing = false;
         setIcon(play, "play");
-        play.setAttr("aria-label", "继续播放");
+        play.setAttr("aria-label", t("继续播放"));
       }
     });
     timeline.addEventListener("input", () => {
@@ -1564,7 +1626,7 @@ export class ContentLibraryView extends ItemView {
         this.beginAudioProgress(item);
         this.playing = true;
         setIcon(play, "pause");
-        play.setAttr("aria-label", "暂停");
+        play.setAttr("aria-label", t("暂停"));
       }).catch(() => {
         this.playing = false;
         setIcon(play, "play");
@@ -1599,7 +1661,7 @@ export class ContentLibraryView extends ItemView {
     button.empty();
     const icon = button.createSpan();
     setIcon(icon, complete ? "check" : "circle-check");
-    button.createSpan({ text: complete ? "已听完 · 设为未听" : "标记已听完" });
+    button.createSpan({ text: complete ? t("已听完 · 设为未听") : t("标记已听完") });
   }
 
   private async renderPodcastDetail(parent: HTMLElement, item: ContentItem): Promise<void> {
@@ -1624,18 +1686,18 @@ export class ContentLibraryView extends ItemView {
     if (item.excerpt && item.excerpt !== item.subtitle) copy.createEl("p", { text: item.excerpt });
     const audioUrl = await this.resolveAudio(item);
     const consoleEl = playerCard.createDiv({ cls: "cld-player-console" });
-    const timeline = consoleEl.createEl("input", { cls: "cld-audio-range", attr: { type: "range", min: "0", max: "1000", value: "0", "aria-label": "播放进度" } });
+    const timeline = consoleEl.createEl("input", { cls: "cld-audio-range", attr: { type: "range", min: "0", max: "1000", value: "0", "aria-label": t("播放进度") } });
     const timelineRow = consoleEl.createDiv({ cls: "cld-player-timecodes" });
     const currentTime = timelineRow.createEl("time", { text: "00:00" });
     const duration = timelineRow.createEl("time", { text: "00:00" });
     const controls = consoleEl.createDiv({ cls: "cld-player-controls" });
-    const previous = this.iconButton(controls, "skip-back", "上一条");
-    const play = controls.createEl("button", { cls: "cld-play-button", attr: { type: "button", "aria-label": "播放" } });
+    const previous = this.iconButton(controls, "skip-back", t("上一条"));
+    const play = controls.createEl("button", { cls: "cld-play-button", attr: { type: "button", "aria-label": t("播放") } });
     setIcon(play, "play");
-    const next = this.iconButton(controls, "skip-forward", "下一条");
+    const next = this.iconButton(controls, "skip-forward", t("下一条"));
     const options = consoleEl.createDiv({ cls: "cld-player-options" });
     this.createPlaybackModeSelect(options);
-    const speed = options.createEl("button", { cls: "cld-speed-control", text: "1×", attr: { type: "button", "aria-label": "播放速度" } });
+    const speed = options.createEl("button", { cls: "cld-speed-control", text: "1×", attr: { type: "button", "aria-label": t("播放速度") } });
     if (audioUrl) {
       const shouldAutoplay = this.autoplayItemId === item.id;
       this.autoplayItemId = null;
@@ -1701,7 +1763,7 @@ export class ContentLibraryView extends ItemView {
       this.autoplayItemId = null;
       play.addEventListener("click", () => this.executeCommand("vaultcast:open-player"));
       timeline.disabled = true;
-      consoleEl.createEl("small", { cls: "cld-player-status", text: "没有检测到本地音频；播放按钮将打开 VaultCast。" });
+      consoleEl.createEl("small", { cls: "cld-player-status", text: t("没有检测到本地音频；播放按钮将打开 VaultCast。") });
     }
     const actions = playerCard.createDiv({ cls: "cld-detail-actions" });
     const listened = actions.createEl("button", { cls: "cld-text-button cld-listen-state-button", attr: { type: "button" } });
@@ -1715,39 +1777,39 @@ export class ContentLibraryView extends ItemView {
       this.updateListenStateButton(listened, item);
       this.updateRenderedStatus(item);
     });
-    const source = actions.createEl("button", { cls: "cld-text-button", text: item.file.extension === "md" ? "打开节目笔记" : "打开音频文件", attr: { type: "button" } });
+    const source = actions.createEl("button", { cls: "cld-text-button", text: item.file.extension === "md" ? t("打开节目笔记") : t("打开音频文件"), attr: { type: "button" } });
     source.addEventListener("click", () => void this.openFile(item.file));
     if (item.externalUrl) {
-      const link = actions.createEl("button", { cls: "cld-text-button", text: "打开原始链接", attr: { type: "button" } });
+      const link = actions.createEl("button", { cls: "cld-text-button", text: t("打开原始链接"), attr: { type: "button" } });
       link.addEventListener("click", () => window.open(item.externalUrl, "_blank"));
     }
     if (this.getMatchedNote(item)) {
-      const article = actions.createEl("button", { cls: "cld-text-button", text: "阅读对应文章", attr: { type: "button" } });
+      const article = actions.createEl("button", { cls: "cld-text-button", text: t("阅读对应文章"), attr: { type: "button" } });
       article.addEventListener("click", () => this.openMatchedArticle(item));
     }
     const moment = parent.createDiv({ cls: "cld-moment cld-glass" });
-    moment.createEl("strong", { text: "记录此刻" });
-    const thought = moment.createEl("textarea", { cls: "cld-textarea", attr: { rows: "4", placeholder: "记录现在想到的内容…", "aria-label": "此刻的想法" } });
-    const save = moment.createEl("button", { cls: "cld-primary-button", text: "保存想法", attr: { type: "button" } });
+    moment.createEl("strong", { text: t("记录此刻") });
+    const thought = moment.createEl("textarea", { cls: "cld-textarea", attr: { rows: "4", placeholder: t("记录现在想到的内容…"), "aria-label": t("此刻的想法") } });
+    const save = moment.createEl("button", { cls: "cld-primary-button", text: t("保存想法"), attr: { type: "button" } });
     save.addEventListener("click", async () => {
       const time = formatTime(this.audio?.currentTime ?? 0);
       const file = await this.plugin.appendAnnotation(item, thought.value, "", time);
       if (!file) {
-        new Notice("请先写下想法。");
+        new Notice(t("请先写下想法。"));
         return;
       }
       thought.value = "";
-      new Notice(`已保存到 ${file.path}`);
+      new Notice(t("已保存到 {path}", { path: file.path }));
     });
 
   }
 
   private async renderPodcastInspector(layout: HTMLElement): Promise<void> {
-    const aside = layout.createEl("aside", { cls: "cld-inspector cld-side-player cld-glass", attr: { "aria-label": "当前播放节目" } });
+    const aside = layout.createEl("aside", { cls: "cld-inspector cld-side-player cld-glass", attr: { "aria-label": t("当前播放节目") } });
     const item = this.selected || this.currentItems()[0];
     if (!item) {
-      aside.createEl("small", { text: "当前播放" });
-      aside.createEl("h3", { text: "选择一集节目" });
+      aside.createEl("small", { text: t("当前播放") });
+      aside.createEl("h3", { text: t("选择一集节目") });
       return;
     }
 
@@ -1762,23 +1824,23 @@ export class ContentLibraryView extends ItemView {
     }
 
     const copy = aside.createDiv({ cls: "cld-side-player-copy" });
-    copy.createEl("small", { text: `${item.subtitle} · 当前节目` });
+    copy.createEl("small", { text: `${item.subtitle} · ${t("当前节目")}` });
     copy.createEl("h3", { text: item.title });
     this.renderContentStatus(copy, item);
     if (item.excerpt && item.excerpt !== item.subtitle) copy.createEl("p", { text: item.excerpt });
 
-    const timeline = aside.createEl("input", { cls: "cld-audio-range", attr: { type: "range", min: "0", max: "1000", value: "0", "aria-label": "播放进度" } });
+    const timeline = aside.createEl("input", { cls: "cld-audio-range", attr: { type: "range", min: "0", max: "1000", value: "0", "aria-label": t("播放进度") } });
     const timelineRow = aside.createDiv({ cls: "cld-player-timecodes" });
     const current = timelineRow.createEl("time", { text: "00:00" });
     const total = timelineRow.createEl("time", { text: "00:00" });
     const controls = aside.createDiv({ cls: "cld-side-player-controls" });
-    const previous = this.iconButton(controls, "skip-back", "上一条");
-    const play = controls.createEl("button", { cls: "cld-play-button", attr: { type: "button", "aria-label": "播放" } });
+    const previous = this.iconButton(controls, "skip-back", t("上一条"));
+    const play = controls.createEl("button", { cls: "cld-play-button", attr: { type: "button", "aria-label": t("播放") } });
     setIcon(play, "play");
-    const next = this.iconButton(controls, "skip-forward", "下一条");
+    const next = this.iconButton(controls, "skip-forward", t("下一条"));
     const options = aside.createDiv({ cls: "cld-player-options" });
     this.createPlaybackModeSelect(options);
-    const speed = options.createEl("button", { cls: "cld-speed-control", text: "1×", attr: { type: "button", "aria-label": "播放速度" } });
+    const speed = options.createEl("button", { cls: "cld-speed-control", text: "1×", attr: { type: "button", "aria-label": t("播放速度") } });
 
     const audioUrl = await this.resolveAudio(item);
     if (audioUrl) {
@@ -1834,7 +1896,7 @@ export class ContentLibraryView extends ItemView {
         }).catch(() => {
           this.playing = false;
           setIcon(play, "play");
-          new Notice("系统阻止了自动播放，请点击一次右侧播放键。", 3500);
+          new Notice(t("系统阻止了自动播放，请点击一次右侧播放键。"), 3500);
         });
       } else if (wasPlaying) {
         this.playing = true;
@@ -1847,24 +1909,24 @@ export class ContentLibraryView extends ItemView {
       this.autoplayItemId = null;
       timeline.disabled = true;
       play.addEventListener("click", () => this.executeCommand("vaultcast:open-player"));
-      aside.createEl("small", { cls: "cld-player-status", text: "未检测到本地音频" });
+      aside.createEl("small", { cls: "cld-player-status", text: t("未检测到本地音频") });
       if (shouldOpenFallback) this.executeCommand("vaultcast:open-player");
     }
 
     const matchedNote = this.getMatchedNote(item);
     if (matchedNote) {
-      const article = aside.createEl("button", { cls: "cld-primary-button cld-open-article", text: "阅读对应文章", attr: { type: "button" } });
+      const article = aside.createEl("button", { cls: "cld-primary-button cld-open-article", text: t("阅读对应文章"), attr: { type: "button" } });
       article.addEventListener("click", () => this.openMatchedArticle(item));
     }
   }
 
   private renderInspector(layout: HTMLElement): void {
-    const aside = layout.createEl("aside", { cls: "cld-inspector cld-glass", attr: { "aria-label": "内容详情" } });
+    const aside = layout.createEl("aside", { cls: "cld-inspector cld-glass", attr: { "aria-label": t("内容详情") } });
     const item = this.selected || this.currentItems()[0];
     if (!item) {
-      aside.createEl("small", { text: "内容详情" });
-      aside.createEl("h3", { text: "选择一项内容" });
-      aside.createEl("p", { text: "封面、进度和下一步操作会显示在这里。" });
+      aside.createEl("small", { text: t("内容详情") });
+      aside.createEl("h3", { text: t("选择一项内容") });
+      aside.createEl("p", { text: t("封面、进度和下一步操作会显示在这里。") });
       return;
     }
     const preview = aside.createDiv({ cls: `cld-inspector-cover cld-kind-${item.kind}` });
@@ -1879,11 +1941,11 @@ export class ContentLibraryView extends ItemView {
     aside.createEl("p", { text: item.subtitle });
     const savedProgress = this.plugin.contentProgress(item.file)?.progress ?? item.progress;
     const head = aside.createDiv({ cls: "cld-progress-head" });
-    head.createSpan({ text: "进度" });
+    head.createSpan({ text: t("进度") });
     head.createEl("strong", { text: `${Math.round(savedProgress)}%` });
     const track = aside.createDiv({ cls: "cld-track" });
     track.createSpan().style.width = `${savedProgress}%`;
-    const open = aside.createEl("button", { cls: "cld-primary-button", text: item.kind === "podcast" ? "打开播放器" : "继续阅读", attr: { type: "button" } });
+    const open = aside.createEl("button", { cls: "cld-primary-button", text: item.kind === "podcast" ? t("打开播放器") : t("继续阅读"), attr: { type: "button" } });
     open.addEventListener("click", () => {
       this.selected = item;
       this.detailOpen = true;
@@ -1905,9 +1967,9 @@ export class ContentLibraryView extends ItemView {
     const dock = existing || host.createDiv({ cls: "cld-mini-player cld-glass" });
     dock.empty();
     const copy = dock.createDiv();
-    copy.createEl("small", { text: `正在播放 · ${formatTime(this.audio.currentTime)}` });
+    copy.createEl("small", { text: `${t("正在播放")} · ${formatTime(this.audio.currentTime)}` });
     copy.createEl("strong", { text: item.title });
-    const button = dock.createEl("button", { cls: "cld-play-button", attr: { type: "button", "aria-label": "暂停" } });
+    const button = dock.createEl("button", { cls: "cld-play-button", attr: { type: "button", "aria-label": t("暂停") } });
     setIcon(button, "pause");
     button.addEventListener("click", () => {
       this.audio?.pause();
@@ -1929,7 +1991,7 @@ export class ContentLibraryView extends ItemView {
 
   private executeCommand(id: string): void {
     const host = this.app as unknown as CommandHost;
-    if (!host.commands?.executeCommandById(id)) new Notice("对应插件或命令当前不可用。");
+    if (!host.commands?.executeCommandById(id)) new Notice(t("对应插件或命令当前不可用。"));
   }
 
   private async openFile(file: TFile): Promise<void> {
@@ -1946,13 +2008,13 @@ export class ContentLibraryView extends ItemView {
   private createPlaybackModeSelect(parent: HTMLElement): HTMLSelectElement {
     const select = parent.createEl("select", {
       cls: "cld-playback-mode",
-      attr: { "aria-label": "播放模式" },
+      attr: { "aria-label": t("播放模式") },
     });
     for (const [value, label] of [
-      ["sequential", "顺序播放"],
-      ["list-loop", "列表循环"],
-      ["single-loop", "单曲循环"],
-      ["shuffle", "随机播放"],
+      ["sequential", t("顺序播放")],
+      ["list-loop", t("列表循环")],
+      ["single-loop", t("单曲循环")],
+      ["shuffle", t("随机播放")],
     ] as const) select.createEl("option", { value, text: label });
     select.value = this.plugin.settings.playbackMode;
     select.addEventListener("change", async () => {
@@ -1996,7 +2058,7 @@ export class ContentLibraryView extends ItemView {
   private openMatchedArticle(item: ContentItem): void {
     const note = this.getMatchedNote(item);
     if (!note) {
-      new Notice("没有找到与这条音频对应的文章。");
+      new Notice(t("没有找到与这条音频对应的文章。"));
       return;
     }
     this.openArticleFile(note, item);
@@ -2005,7 +2067,7 @@ export class ContentLibraryView extends ItemView {
   private openArticlePath(path: string): void {
     const file = this.app.vault.getAbstractFileByPath(path);
     if (file instanceof TFile) this.openArticleFile(file);
-    else new Notice("原文章已经移动或不存在。");
+    else new Notice(t("原文章已经移动或不存在。"));
   }
 
   private openArticleFile(note: TFile, returnPodcast: ContentItem | null = null): void {
@@ -2085,7 +2147,7 @@ export class ContentLibraryView extends ItemView {
       void this.refresh();
       return;
     }
-    new Notice("没有找到带对应原文的上一条或下一条节目。");
+    new Notice(t("没有找到带对应原文的上一条或下一条节目。"));
   }
 
   private destroyAudio(): void {
@@ -2203,7 +2265,7 @@ function openExternalUrl(url: string, _appPath = ""): Promise<void> {
   try {
     window.open(url, "_blank", "noopener,noreferrer");
   } catch {
-    return Promise.reject(new Error("无法打开外部链接"));
+    return Promise.reject(new Error(t("无法打开外部链接")));
   }
   return Promise.resolve();
 }
@@ -2229,22 +2291,22 @@ class NoteTitleModal extends Modal {
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass("cld-note-modal");
-    contentEl.createEl("h2", { text: "新建笔记" });
-    contentEl.createEl("p", { text: `保存到：${this.sourceName}` });
+    contentEl.createEl("h2", { text: t("新建笔记") });
+    contentEl.createEl("p", { text: t("保存到：{name}", { name: this.sourceName }) });
     const form = contentEl.createEl("form", { cls: "cld-note-modal-form" });
     const input = form.createEl("input", {
       cls: "cld-note-title-input",
-      attr: { type: "text", placeholder: "输入笔记标题", autocomplete: "off", "aria-label": "笔记标题" },
+      attr: { type: "text", placeholder: t("输入笔记标题"), autocomplete: "off", "aria-label": t("笔记标题") },
     });
     const actions = form.createDiv({ cls: "cld-note-modal-actions" });
-    const cancel = actions.createEl("button", { text: "取消", attr: { type: "button" } });
-    const create = actions.createEl("button", { cls: "mod-cta", text: "创建", attr: { type: "submit" } });
+    const cancel = actions.createEl("button", { text: t("取消"), attr: { type: "button" } });
+    const create = actions.createEl("button", { cls: "mod-cta", text: t("创建"), attr: { type: "submit" } });
     cancel.addEventListener("click", () => this.close());
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       const title = input.value.trim();
       if (!title) {
-        new Notice("请输入笔记标题。");
+        new Notice(t("请输入笔记标题。"));
         input.focus();
         return;
       }
@@ -2253,7 +2315,7 @@ class NoteTitleModal extends Modal {
         await this.onSubmitTitle(title);
         this.close();
       } catch (error) {
-        new Notice(error instanceof Error ? `创建失败：${error.message}` : "创建失败，请重试。");
+        new Notice(error instanceof Error ? t("创建失败：{message}", { message: error.message }) : t("创建失败，请重试。"));
         create.disabled = false;
       }
     });
@@ -2278,17 +2340,17 @@ class AnnotationEditModal extends Modal {
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass("cld-note-modal");
-    contentEl.createEl("h2", { text: "编辑批注" });
+    contentEl.createEl("h2", { text: t("编辑批注") });
     const form = contentEl.createEl("form", { cls: "cld-note-modal-form" });
-    form.createEl("label", { text: "摘录原文" });
-    const quote = form.createEl("textarea", { cls: "cld-textarea", attr: { rows: "4", "aria-label": "摘录原文" } });
+    form.createEl("label", { text: t("摘录原文") });
+    const quote = form.createEl("textarea", { cls: "cld-textarea", attr: { rows: "4", "aria-label": t("摘录原文") } });
     quote.value = this.annotation.quote;
-    form.createEl("label", { text: "批注内容" });
-    const note = form.createEl("textarea", { cls: "cld-textarea", attr: { rows: "6", "aria-label": "批注内容" } });
+    form.createEl("label", { text: t("批注内容") });
+    const note = form.createEl("textarea", { cls: "cld-textarea", attr: { rows: "6", "aria-label": t("批注内容") } });
     note.value = this.annotation.note;
     const actions = form.createDiv({ cls: "cld-note-modal-actions" });
-    const cancel = actions.createEl("button", { text: "取消", attr: { type: "button" } });
-    const save = actions.createEl("button", { cls: "mod-cta", text: "保存修改", attr: { type: "submit" } });
+    const cancel = actions.createEl("button", { text: t("取消"), attr: { type: "button" } });
+    const save = actions.createEl("button", { cls: "mod-cta", text: t("保存修改"), attr: { type: "submit" } });
     cancel.addEventListener("click", () => this.close());
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -2297,7 +2359,7 @@ class AnnotationEditModal extends Modal {
         await this.onSubmit(quote.value, note.value);
         this.close();
       } catch (error) {
-        new Notice(error instanceof Error ? `保存失败：${error.message}` : "保存失败，请重试。");
+        new Notice(error instanceof Error ? t("保存失败：{message}", { message: error.message }) : t("保存失败，请重试。"));
         save.disabled = false;
       }
     });
@@ -2318,11 +2380,11 @@ class AnnotationDeleteModal extends Modal {
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass("cld-note-modal");
-    contentEl.createEl("h2", { text: "删除这条批注？" });
-    contentEl.createEl("p", { text: "删除后文章高亮和这条批注会一并移除。" });
+    contentEl.createEl("h2", { text: t("删除这条批注？") });
+    contentEl.createEl("p", { text: t("删除后文章高亮和这条批注会一并移除。") });
     const actions = contentEl.createDiv({ cls: "cld-note-modal-actions" });
-    const cancel = actions.createEl("button", { text: "取消", attr: { type: "button" } });
-    const remove = actions.createEl("button", { cls: "mod-warning", text: "删除", attr: { type: "button" } });
+    const cancel = actions.createEl("button", { text: t("取消"), attr: { type: "button" } });
+    const remove = actions.createEl("button", { cls: "mod-warning", text: t("删除"), attr: { type: "button" } });
     cancel.addEventListener("click", () => this.close());
     remove.addEventListener("click", async () => {
       remove.disabled = true;
@@ -2330,7 +2392,7 @@ class AnnotationDeleteModal extends Modal {
         await this.onConfirm();
         this.close();
       } catch (error) {
-        new Notice(error instanceof Error ? `删除失败：${error.message}` : "删除失败，请重试。");
+        new Notice(error instanceof Error ? t("删除失败：{message}", { message: error.message }) : t("删除失败，请重试。"));
         remove.disabled = false;
       }
     });
@@ -2354,26 +2416,26 @@ class MusicPlaylistModal extends Modal {
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass("cld-note-modal");
-    contentEl.createEl("h2", { text: "添加网易云歌单" });
-    contentEl.createEl("p", { text: `保存到：${this.sourceName} · 粘贴分享链接即可` });
+    contentEl.createEl("h2", { text: t("添加网易云歌单") });
+    contentEl.createEl("p", { text: `${t("保存到：{name}", { name: this.sourceName })} · ${t("粘贴分享链接即可")}` });
     const form = contentEl.createEl("form", { cls: "cld-note-modal-form" });
     const input = form.createEl("input", {
       cls: "cld-note-title-input",
-      attr: { type: "url", placeholder: "https://music.163.com/#/playlist?id=...", autocomplete: "off", "aria-label": "网易云歌单链接" },
+      attr: { type: "url", placeholder: "https://music.163.com/#/playlist?id=...", autocomplete: "off", "aria-label": t("网易云歌单链接") },
     });
     const titleInput = form.createEl("input", {
       cls: "cld-note-title-input",
-      attr: { type: "text", placeholder: "自定义名称（可选）", autocomplete: "off", "aria-label": "歌单名称" },
+      attr: { type: "text", placeholder: t("自定义名称（可选）"), autocomplete: "off", "aria-label": t("歌单名称") },
     });
     const actions = form.createDiv({ cls: "cld-note-modal-actions" });
-    const cancel = actions.createEl("button", { text: "取消", attr: { type: "button" } });
-    const create = actions.createEl("button", { cls: "mod-cta", text: "添加", attr: { type: "submit" } });
+    const cancel = actions.createEl("button", { text: t("取消"), attr: { type: "button" } });
+    const create = actions.createEl("button", { cls: "mod-cta", text: t("添加"), attr: { type: "submit" } });
     cancel.addEventListener("click", () => this.close());
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       const url = input.value.trim();
       if (!/^https?:\/\/(?:www\.)?(?:music\.163\.com|y\.qq\.com|i\.y\.qq\.com|c6\.y\.qq\.com)\//i.test(url)) {
-        new Notice("请粘贴网易云或 QQ 音乐的歌单分享链接。");
+        new Notice(t("请粘贴网易云或 QQ 音乐的歌单分享链接。"));
         input.focus();
         return;
       }
@@ -2382,7 +2444,7 @@ class MusicPlaylistModal extends Modal {
         await this.onSubmitUrl(url, titleInput.value.trim());
         this.close();
       } catch (error) {
-        new Notice(error instanceof Error ? `添加失败：${error.message}` : "添加失败，请重试。");
+        new Notice(error instanceof Error ? t("添加失败：{message}", { message: error.message }) : t("添加失败，请重试。"));
         create.disabled = false;
       }
     });
@@ -2407,21 +2469,21 @@ class MusicPlaylistNameModal extends Modal {
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass("cld-note-modal");
-    contentEl.createEl("h2", { text: "编辑歌单名称" });
+    contentEl.createEl("h2", { text: t("编辑歌单名称") });
     const form = contentEl.createEl("form", { cls: "cld-note-modal-form" });
     const input = form.createEl("input", {
       cls: "cld-note-title-input",
-      attr: { type: "text", value: this.currentTitle, autocomplete: "off", "aria-label": "歌单名称" },
+      attr: { type: "text", value: this.currentTitle, autocomplete: "off", "aria-label": t("歌单名称") },
     });
     const actions = form.createDiv({ cls: "cld-note-modal-actions" });
-    const cancel = actions.createEl("button", { text: "取消", attr: { type: "button" } });
-    const save = actions.createEl("button", { cls: "mod-cta", text: "保存", attr: { type: "submit" } });
+    const cancel = actions.createEl("button", { text: t("取消"), attr: { type: "button" } });
+    const save = actions.createEl("button", { cls: "mod-cta", text: t("保存"), attr: { type: "submit" } });
     cancel.addEventListener("click", () => this.close());
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       const title = input.value.trim();
       if (!title) {
-        new Notice("名称不能为空。");
+        new Notice(t("名称不能为空。"));
         input.focus();
         return;
       }
@@ -2430,7 +2492,7 @@ class MusicPlaylistNameModal extends Modal {
         await this.onSubmitTitle(title);
         this.close();
       } catch (error) {
-        new Notice(error instanceof Error ? `保存失败：${error.message}` : "保存失败，请重试。");
+        new Notice(error instanceof Error ? t("保存失败：{message}", { message: error.message }) : t("保存失败，请重试。"));
         save.disabled = false;
       }
     });
@@ -2446,7 +2508,7 @@ class MusicPlaylistNameModal extends Modal {
 }
 
 function storedAnnotationsFor(content: string, sourcePath: string): StoredAnnotation[] {
-  const source = `来源：[[${sourcePath}]]`;
+  const sources = SOURCE_LABELS.map((label) => `${label}[[${sourcePath}]]`);
   const annotations: StoredAnnotation[] = [];
   const headings = [...content.matchAll(/^##\s[^\n]*$/gm)];
   for (let index = 0; index < headings.length; index += 1) {
@@ -2455,18 +2517,18 @@ function storedAnnotationsFor(content: string, sourcePath: string): StoredAnnota
     const start = match.index;
     const end = headings[index + 1]?.index ?? content.length;
     const block = content.slice(start, end);
-    if (!block.includes(source)) continue;
+    if (!sources.some((source) => block.includes(source))) continue;
     const lines = block.trimEnd().split(/\r?\n/);
-    const heading = lines.shift() || "## 批注";
-    const sourceLine = lines.find((line) => line.startsWith("来源：")) || `来源：[[${sourcePath}]]`;
-    const timeLine = lines.find((line) => line.startsWith("时间：")) || "";
+    const heading = lines.shift() || t("## 批注");
+    const sourceLine = lines.find((line) => SOURCE_LABELS.some((label) => line.startsWith(label))) || `${sourceLabel()}[[${sourcePath}]]`;
+    const timeLine = lines.find((line) => TIME_LABELS.some((label) => line.startsWith(label))) || "";
     const quoteStart = lines.findIndex((line) => /^>\s?/.test(line));
     let quoteEnd = quoteStart;
     while (quoteStart >= 0 && quoteEnd < lines.length && /^>\s?/.test(lines[quoteEnd])) quoteEnd += 1;
     const quote = quoteStart >= 0 ? lines.slice(quoteStart, quoteEnd).map((line) => line.replace(/^>\s?/, "")).join("\n").trim() : "";
     const noteStart = quoteStart >= 0 ? quoteEnd : 0;
     const note = lines.slice(noteStart)
-      .filter((line) => !/^\s*(来源|时间)：/.test(line))
+      .filter((line) => !/^\s*(?:(?:来源|时间)：|(?:Source|Time):\s)/.test(line))
       .join("\n")
       .trim();
     annotations.push({
@@ -2546,7 +2608,7 @@ function indexedArticleText(article: HTMLElement): { text: string; positions: Ar
 }
 
 function annotationOriginalPath(content: string): string {
-  const match = content.match(/来源：\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/);
+  const match = content.match(/(?:来源：|Source:\s*)\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/);
   return match?.[1]?.trim() || "";
 }
 
@@ -2560,7 +2622,7 @@ function extractInspirationSentences(content: string, annotation: boolean): stri
     const trimmed = rawLine.trim();
     if (!trimmed || /^#{1,6}\s/.test(trimmed) || /^[-*_]{3,}$/.test(trimmed) || /^\|/.test(trimmed)) continue;
     if (annotation && /^>/.test(trimmed)) continue;
-    if (/^(来源|时间|日期|原文链接|音频|播客音频)\s*[：:]/.test(trimmed)) continue;
+    if (/^(来源|时间|日期|原文链接|音频|播客音频|Source|Time|Date|Audio)\s*[：:]/.test(trimmed)) continue;
     const clean = trimmed
       .replace(/^\s*(?:[-*+] |\d+[.)]\s+)/, "")
       .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
@@ -2611,20 +2673,22 @@ function formatCompactDuration(value: number): string {
 }
 
 function formatUsage(minutes: number): string {
-  if (minutes < 60) return `${minutes} 分钟`;
-  return `${Math.floor(minutes / 60)}小时${minutes % 60 ? `${minutes % 60}分` : ""}`;
+  if (minutes < 60) return t("{count} 分钟", { count: minutes });
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? t("{hours}小时{minutes}分", { hours, minutes: rest }) : t("{hours}小时", { hours });
 }
 
 function greetingForHour(hour: number): string {
-  if (hour < 6) return "凌晨好";
-  if (hour < 12) return "早上好";
-  if (hour < 14) return "中午好";
-  if (hour < 18) return "下午好";
-  return "晚上好";
+  if (hour < 6) return t("凌晨好");
+  if (hour < 12) return t("早上好");
+  if (hour < 14) return t("中午好");
+  if (hour < 18) return t("下午好");
+  return t("晚上好");
 }
 
 function webHost(url: string): string {
-  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return "网页链接"; }
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return t("网页链接"); }
 }
 
 function extractWebLinks(content: string): Array<{ label: string; url: string }> {

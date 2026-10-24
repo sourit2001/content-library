@@ -1,4 +1,6 @@
 import type { TFile } from "obsidian";
+import type { ThemePack } from "./packs";
+import type { LanguagePreference } from "./i18n";
 
 export type DashboardTheme = "grass" | "blue" | "pink" | "rose" | "black" | "glass";
 export type ThemeMode = "system" | "light" | "dark";
@@ -44,8 +46,19 @@ export interface ContentSource {
 }
 
 export interface DashboardSettings {
+  /** UI language; "auto" follows Obsidian's language. */
+  language: LanguagePreference;
   theme: DashboardTheme;
+  /** Installed theme pack currently applied; empty means the built-in `theme`. */
+  activePackId: string;
+  installedPacks: Record<string, ThemePack>;
+  /** Gumroad product id → license key for premium theme packs. */
+  licenses: Record<string, string>;
+  /** 0–1 volume for theme pack ambient sound. */
+  ambientVolume: number;
   themeMode: ThemeMode;
+  /** Premium built-in themes the user used during their free window (kept for good). */
+  claimedThemes: DashboardTheme[];
   annotationHighlight: AnnotationHighlight;
   bannerPath: string;
   annotationFolder: string;
@@ -93,7 +106,7 @@ export const THEME_LABELS: Record<DashboardTheme, string> = {
   pink: "樱花粉",
   rose: "玫瑰红",
   black: "曜石黑",
-  glass: "透明玻璃",
+  glass: "森林玻璃",
 };
 
 export const SOURCE_KIND_LABELS: Record<SourceKind, string> = {
@@ -117,8 +130,14 @@ export const SOURCE_GROUP_LABELS: Record<SourceGroup, string> = {
 };
 
 export const DEFAULT_SETTINGS: DashboardSettings = {
+  language: "auto",
   theme: "grass",
+  activePackId: "",
+  installedPacks: {},
+  licenses: {},
+  ambientVolume: 0.5,
   themeMode: "system",
+  claimedThemes: [],
   annotationHighlight: "yellow",
   bannerPath: "",
   annotationFolder: "Dashboard Notes",
