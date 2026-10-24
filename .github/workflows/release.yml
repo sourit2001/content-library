@@ -1,12 +1,16 @@
 name: Release plugin
 
-# Push a tag that matches manifest.json's version (e.g. 0.2.0, no "v") to
-# build the plugin and publish a GitHub release with main.js, manifest.json
-# and styles.css — what Obsidian's community plugin store downloads.
-# Release notes come from .github/release-notes/<tag>.md when present.
+# Publishes a GitHub release with main.js, manifest.json and styles.css — the
+# files Obsidian's community plugin store downloads — whenever manifest.json on
+# main has a version that has no release yet (or when a matching tag is pushed).
+# To release: bump "version" in manifest.json, package.json and versions.json,
+# optionally add .github/release-notes/<version>.md, and push to main.
 on:
   push:
+    branches: [main]
+    paths: [manifest.json]
     tags: ["*.*.*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -16,27 +20,35 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-      - run: npm ci
-      - run: npm run check
-      - run: npm run build
-      - name: Check tag matches manifest version
-        run: |
-          version=$(node -p "require('./manifest.json').version")
-          if [ "$version" != "${GITHUB_REF_NAME}" ]; then
-            echo "Tag ${GITHUB_REF_NAME} does not match manifest.json version ${version}" >&2
-            exit 1
-          fi
-      - name: Publish release
+      - name: Read version
+        id: version
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          notes=".github/release-notes/${GITHUB_REF_NAME}.md"
-          if [ -f "$notes" ]; then
-            gh release create "$GITHUB_REF_NAME" main.js manifest.json styles.css --title "$GITHUB_REF_NAME" --notes-file "$notes"
-          else
-            gh release create "$GITHUB_REF_NAME" main.js manifest.json styles.css --title "$GITHUB_REF_NAME" --generate-notes
+          version=$(node -p "require('./manifest.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "$version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match manifest.json version $version" >&2
+            exit 1
           fi
+          if gh release view "$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $version already exists; nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-node@v4
+        if: steps.version.outputs.skip != 'true'
+        with:
+          node-version: 20
+          cache: npm
+      - if: steps.version.outputs.skip != 'true'
+        run: npm ci && npm run check && npm run build
+      - name: Publish release
+        if: steps.version.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          notes=".github/release-notes/${VERSION}.md"
+          if [ -f "$notes" ]; then set -- --notes-file "$notes"; else set -- --generate-notes; fi
+          gh release create "$VERSION" main.js manifest.json styles.css \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$VERSION" "$@"
