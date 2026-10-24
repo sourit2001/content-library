@@ -8,7 +8,8 @@ import {
   setIcon,
 } from "obsidian";
 import type ContentLibraryDashboardPlugin from "./main";
-import glassBackground from "../assets/cld-glass-green-bg.jpg";
+import glassPreview from "../assets/cld-glass-preview.jpg";
+import glassMockup from "../assets/cld-glass-mockup.jpg";
 import { THEME_LABELS, type AnnotationHighlight, type DashboardTheme } from "./types";
 import { dateLocale, isEnglish, t } from "./i18n";
 import { renderSupportPanel } from "./support";
@@ -59,10 +60,29 @@ const PACK_EN: Record<string, [string, string]> = {
  * colors keep working on synced devices before the images are re-downloaded.
  */
 const REPO = "sourit2001/content-library";
+/**
+ * A commit whose packs/index.json is known-good. jsDelivr can keep serving a stale copy of
+ * `@main` for hours, and raw.githubusercontent.com is often unreachable from mainland China,
+ * so this immutable URL guarantees the catalog is never older than this plugin build.
+ * The newest `revision` among all mirrors wins.
+ */
+const PINNED_INDEX_COMMIT = "be077bbdf02fde79ca8d9fe3491a45cae1c09969";
 export const PACK_INDEX_URLS = [
   `https://cdn.jsdelivr.net/gh/${REPO}@main/packs/index.json`,
   `https://raw.githubusercontent.com/${REPO}/main/packs/index.json`,
+  `https://cdn.jsdelivr.net/gh/${REPO}@${PINNED_INDEX_COMMIT}/packs/index.json`,
 ];
+
+/** True when version `a` is newer than `b` (dotted numbers, e.g. 1.1.1 > 1.0.0). */
+export function isNewerVersion(a: string, b: string): boolean {
+  const pa = a.split(".").map((n) => Number.parseInt(n, 10) || 0);
+  const pb = b.split(".").map((n) => Number.parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
+    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (diff) return diff > 0;
+  }
+  return false;
+}
 const INDEX_TIMEOUT_MS = 10_000;
 
 /** Pack file bases for a commit: jsDelivr first (reachable in more regions), GitHub raw as fallback. */
@@ -564,8 +584,13 @@ export class ThemePackStoreModal extends Modal {
     const isActive = !this.plugin.settings.activePackId && this.plugin.settings.theme === theme;
     const card = grid.createDiv({ cls: `cld-pack-card${isActive ? " is-active" : ""}` });
     const preview = card.createDiv({ cls: `cld-pack-preview cld-builtin-preview cld-builtin-${theme}` });
+    const openPreview = theme === "glass" ? () => new BuiltinPreviewModal(this.app, this, theme, glassMockup).open() : null;
     if (theme === "glass") {
-      preview.createEl("img", { attr: { src: glassBackground, alt: t(THEME_LABELS[theme]) } });
+      preview.addClass("is-clickable");
+      preview.setAttrs({ role: "button", tabindex: "0", "aria-label": t("预览效果") });
+      preview.createEl("img", { attr: { src: glassPreview, alt: t(THEME_LABELS[theme]) } });
+      setIcon(preview.createSpan({ cls: "cld-pack-zoom" }), "maximize-2");
+      preview.addEventListener("click", () => openPreview?.());
     } else {
       const [a, b, c, d] = info.swatches;
       preview.setCssProps({ "--cld-p1": a, "--cld-p2": b, "--cld-p3": c, "--cld-p4": d });
@@ -593,13 +618,26 @@ export class ThemePackStoreModal extends Modal {
     const swatches = body.createDiv({ cls: "cld-pack-swatches" });
     for (const color of info.swatches) swatches.createSpan().setCssProps({ "--cld-swatch": color });
     const actions = body.createDiv({ cls: "cld-pack-actions" });
-    const button = actions.createEl("button", { text: isActive ? t("使用中") : unlocked ? t("使用") : t("解锁") });
+    if (openPreview) {
+      const previewButton = actions.createEl("button", { cls: "cld-pack-preview-button", text: t("预览") });
+      previewButton.addEventListener("click", openPreview);
+    }
+    this.renderBuiltinAction(actions, theme, () => undefined);
+  }
+
+  /** The use / unlock button of a built-in theme; shared by its card and its preview window. */
+  renderBuiltinAction(actions: HTMLElement, theme: DashboardTheme, afterAction: () => void): void {
+    const premium = this.plugin.packs.builtinPremium(theme);
+    const unlocked = this.plugin.packs.isBuiltinUnlocked(theme);
+    const isActive = !this.plugin.settings.activePackId && this.plugin.settings.theme === theme;
+    const button = actions.createEl("button", { cls: "cld-pack-action", text: isActive ? t("使用中") : unlocked ? t("使用") : t("解锁") });
     if (isActive) {
       button.addClass("mod-muted");
       button.disabled = true;
     } else if (!unlocked && premium) {
       button.addClass("mod-cta");
       button.addEventListener("click", () => {
+        afterAction();
         new LicenseModal(this.app, this.plugin, premium, t(THEME_LABELS[theme]), () => this.render()).open();
       });
     } else {
@@ -607,6 +645,7 @@ export class ThemePackStoreModal extends Modal {
       button.addEventListener("click", async () => {
         if (!(await this.plugin.packs.useBuiltin(theme))) return;
         new Notice(t("已切换到「{name}」", { name: t(THEME_LABELS[theme]) }));
+        afterAction();
         this.render();
       });
     }
@@ -671,7 +710,8 @@ export class ThemePackStoreModal extends Modal {
     const isActive = this.plugin.settings.activePackId === pack.id;
     const unlocked = this.plugin.packs.isUnlocked(pack);
     const button = actions.createEl("button", { cls: "cld-pack-action" });
-    const outdated = installed && installed.version !== pack.version;
+    // Only offer an update for a newer catalog version; a stale mirror must never downgrade a pack.
+    const outdated = Boolean(installed) && isNewerVersion(pack.version, installed.version);
     if (this.busy.has(pack.id)) {
       button.setText(t("下载中…"));
       button.disabled = true;
@@ -710,6 +750,28 @@ export class ThemePackStoreModal extends Modal {
         }
       });
     }
+  }
+}
+
+/** Large dashboard mockup of a built-in theme (bundled image), with its use button. */
+class BuiltinPreviewModal extends Modal {
+  constructor(app: App, private store: ThemePackStoreModal, private theme: DashboardTheme, private mockup: string) {
+    super(app);
+  }
+
+  override onOpen(): void {
+    this.modalEl.addClass("cld-pack-preview-modal");
+    this.titleEl.setText(t(THEME_LABELS[this.theme]));
+    this.contentEl.createDiv({ cls: "cld-pack-preview-frame" }).createEl("img", { attr: { src: this.mockup, alt: t(THEME_LABELS[this.theme]) } });
+    const info = this.contentEl.createDiv({ cls: "cld-pack-preview-info" });
+    const copy = info.createDiv();
+    copy.createEl("p", { text: t(BUILTIN_PREVIEWS[this.theme].description) });
+    copy.createEl("small", { cls: "cld-pack-preview-note", text: t("预览图为示意效果，实际内容以你的笔记为准。") });
+    this.store.renderBuiltinAction(info.createDiv({ cls: "cld-pack-actions" }), this.theme, () => this.close());
+  }
+
+  override onClose(): void {
+    this.contentEl.empty();
   }
 }
 
