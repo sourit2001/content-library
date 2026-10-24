@@ -1,0 +1,44 @@
+{
+  "id": "peach-ink",
+  "name": "桃溪水墨",
+  "description": "粉色晨霞下的水墨远山与孤舟，淡雅的浅色主题。",
+  "author": "Li Zhu",
+  "version": "1.0.0",
+  "base": "glass",
+  "scheme": "light",
+  "preview": "preview.jpg",
+  "background": "background.jpg",
+  "banner": "banner.jpg",
+  "backgroundSize": "cover",
+  "overlay": "linear-gradient(180deg, rgb(255 248 240 / 26%), rgb(250 236 224 / 14%))",
+  "annotationHighlight": "pink",
+  "swatches": [
+    "#f6c9ac",
+    "#edcfb8",
+    "#b29888",
+    "#4c4238"
+  ],
+  "tags": [
+    "精品"
+  ],
+  "palette": {
+    "light": {
+      "ink": "oklch(24% 0.02 30)",
+      "muted": "oklch(44% 0.02 30)",
+      "bg": "oklch(96% 0.020 30 / 46%)",
+      "card": "oklch(99% 0.012 30 / 60%)",
+      "tone-a": "oklch(84% 0.060 30)",
+      "tone-b": "oklch(90% 0.040 55)",
+      "tone-c": "oklch(88% 0.050 90)",
+      "tone-d": "oklch(76% 0.040 15)",
+      "accent": "oklch(58% 0.130 30)"
+    }
+  },
+  "premium": {
+    "provider": "gumroad",
+    "productId": "REPLACE_WITH_GUMROAD_PRODUCT_ID",
+    "buyUrl": "https://gumroad.com/l/REPLACE_ME",
+    "price": "¥18",
+    "freeUntil": "2026-11-07T23:59:59+08:00"
+  }
+}

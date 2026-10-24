@@ -1,0 +1,43 @@
+{
+  "id": "green-landscape",
+  "name": "青绿山水",
+  "description": "工笔青绿山水与繁花，古典又明快。",
+  "author": "Li Zhu",
+  "version": "1.0.0",
+  "base": "glass",
+  "scheme": "dark",
+  "preview": "preview.jpg",
+  "background": "background.jpg",
+  "banner": "banner.jpg",
+  "backgroundSize": "cover",
+  "overlay": "linear-gradient(135deg, rgb(12 34 30 / 50%), rgb(30 70 60 / 22%))",
+  "annotationHighlight": "orange",
+  "swatches": [
+    "#4a4a36",
+    "#589684",
+    "#80a68f",
+    "#c0b995"
+  ],
+  "tags": [
+    "精品"
+  ],
+  "palette": {
+    "light": {
+      "ink": "oklch(97% 0.01 175)",
+      "bg": "oklch(16% 0.040 175 / 58%)",
+      "card": "oklch(30% 0.040 175 / 44%)",
+      "tone-a": "oklch(80% 0.088 175)",
+      "tone-b": "oklch(86% 0.056 200)",
+      "tone-c": "oklch(92% 0.044 235)",
+      "tone-d": "oklch(72% 0.072 160)",
+      "accent": "oklch(80% 0.120 175)"
+    }
+  },
+  "premium": {
+    "provider": "gumroad",
+    "productId": "REPLACE_WITH_GUMROAD_PRODUCT_ID",
+    "buyUrl": "https://gumroad.com/l/REPLACE_ME",
+    "price": "¥18",
+    "freeUntil": "2026-11-07T23:59:59+08:00"
+  }
+}

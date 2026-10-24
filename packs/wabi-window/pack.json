@@ -1,0 +1,43 @@
+{
+  "id": "wabi-window",
+  "name": "侘寂圆窗",
+  "description": "土墙、圆窗与斑驳树影，安静温暖的侘寂风。",
+  "author": "Li Zhu",
+  "version": "1.0.0",
+  "base": "glass",
+  "scheme": "dark",
+  "preview": "preview.jpg",
+  "background": "background.jpg",
+  "banner": "banner.jpg",
+  "backgroundSize": "cover",
+  "overlay": "linear-gradient(135deg, rgb(30 20 10 / 50%), rgb(70 50 30 / 22%))",
+  "annotationHighlight": "orange",
+  "swatches": [
+    "#1e1209",
+    "#574430",
+    "#a38665",
+    "#caaf8f"
+  ],
+  "tags": [
+    "精品"
+  ],
+  "palette": {
+    "light": {
+      "ink": "oklch(97% 0.01 65)",
+      "bg": "oklch(16% 0.035 65 / 58%)",
+      "card": "oklch(30% 0.035 65 / 44%)",
+      "tone-a": "oklch(80% 0.077 65)",
+      "tone-b": "oklch(86% 0.049 90)",
+      "tone-c": "oklch(92% 0.039 125)",
+      "tone-d": "oklch(72% 0.063 50)",
+      "accent": "oklch(80% 0.120 65)"
+    }
+  },
+  "premium": {
+    "provider": "gumroad",
+    "productId": "REPLACE_WITH_GUMROAD_PRODUCT_ID",
+    "buyUrl": "https://gumroad.com/l/REPLACE_ME",
+    "price": "¥18",
+    "freeUntil": "2026-11-07T23:59:59+08:00"
+  }
+}
