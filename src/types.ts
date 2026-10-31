@@ -5,8 +5,8 @@ import type { LanguagePreference } from "./i18n";
 export type DashboardTheme = "grass" | "blue" | "pink" | "rose" | "black" | "glass";
 export type ThemeMode = "system" | "light" | "dark";
 export type AnnotationHighlight = "yellow" | "orange" | "blue" | "pink";
-export type SourceKind = "book" | "podcast" | "music" | "x" | "news" | "clip" | "generic";
-export type SourceGroup = "information" | "skills" | "bookshelf" | "ideas" | "needs" | "podcast" | "music";
+export type SourceKind = "book" | "podcast" | "podlink" | "music" | "x" | "news" | "clip" | "generic";
+export type SourceGroup = "information" | "skills" | "bookshelf" | "ideas" | "needs" | "podcast" | "podlinks" | "music";
 export type ContentProgressState = "in-progress" | "complete";
 
 export interface ContentProgress {
@@ -75,6 +75,8 @@ export interface DashboardSettings {
   viewHistory: Record<string, number>;
   contentProgress: Record<string, ContentProgress>;
   musicCollectionSnapshots: Record<string, MusicCollectionSnapshot>;
+  /** Set once the 播客收藏 (podcast links) source has been offered, so removing it sticks. */
+  podcastLinksSeeded: boolean;
 }
 
 export interface WebPreview {
@@ -116,6 +118,7 @@ export const THEME_LABELS: Record<DashboardTheme, string> = {
 export const SOURCE_KIND_LABELS: Record<SourceKind, string> = {
   book: "阅读",
   podcast: "收听",
+  podlink: "播客链接",
   music: "音乐",
   x: "推文",
   news: "新闻",
@@ -130,6 +133,7 @@ export const SOURCE_GROUP_LABELS: Record<SourceGroup, string> = {
   ideas: "想法收藏",
   needs: "需求收集",
   podcast: "播客页面",
+  podlinks: "播客收藏",
   music: "音乐收藏",
 };
 
@@ -146,7 +150,7 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
   bannerPath: "",
   annotationFolder: "Dashboard Notes",
   dashboardTitle: "内容图书馆",
-  sourceGroupOrder: ["podcast", "music", "information", "skills", "bookshelf", "ideas", "needs"],
+  sourceGroupOrder: ["podcast", "podlinks", "music", "information", "skills", "bookshelf", "ideas", "needs"],
   sources: [],
   coverOverrides: {},
   playbackMode: "sequential",
@@ -154,4 +158,5 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
   viewHistory: {},
   contentProgress: {},
   musicCollectionSnapshots: {},
+  podcastLinksSeeded: false,
 };

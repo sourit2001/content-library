@@ -10,6 +10,7 @@ import { VaultContentIndexer } from "./indexer";
 import { NOTE_SUFFIXES, dateLocale, noteSuffix, setLanguage, sourceLabel, t, timeLabel } from "./i18n";
 import { AmbientPlayer } from "./ambient";
 import { parseYouTubeUrl } from "./youtube";
+import { resolvePodcastLink, PODCAST_PLATFORM_LABELS, type PodcastEpisode } from "./podcast";
 import { ThemePackManager, ThemePackStoreModal, sanitizePack, type ThemePack } from "./packs";
 import { ContentLibrarySettingsTab } from "./settings";
 import { SupportModal } from "./support";
@@ -64,6 +65,11 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
     setLanguage(this.settings.language);
     await this.saveData(this.settings);
     this.indexer = new VaultContentIndexer(this.app);
+    this.app.workspace.onLayoutReady(() => {
+      if (!this.seedPodcastLinksSource()) return;
+      void this.saveData(this.settings);
+      this.refreshViews();
+    });
     this.ambient.register();
 
     this.registerView(
@@ -173,6 +179,7 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
       claimedThemes: Array.isArray(loaded?.claimedThemes)
         ? loaded.claimedThemes.filter((value): value is DashboardTheme => ["grass", "blue", "pink", "rose", "black", "glass"].includes(value))
         : [],
+      podcastLinksSeeded: loaded?.podcastLinksSeeded === true,
       language: loaded?.language === "zh" || loaded?.language === "en" ? loaded.language : "auto",
       playbackMode: (["sequential", "list-loop", "single-loop", "shuffle"] as const).includes(
         loaded?.playbackMode as DashboardSettings["playbackMode"],
@@ -197,9 +204,40 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
     }
   }
 
+  /**
+   * Adds the 播客收藏 category once. It gets its own folder: an existing folder that
+   * holds audio or already belongs to another category is never reused.
+   */
+  private seedPodcastLinksSource(): boolean {
+    if (this.settings.podcastLinksSeeded) return false;
+    this.settings.podcastLinksSeeded = true;
+    if (this.settings.sources.some((source) => source.kind === "podlink")) return true;
+    const used = new Set(this.settings.sources.map((source) => normalizePath(source.folder).replace(/\/$/, "")));
+    const folder = ["播客收藏", "播客链接", "Podcast Links"].map((name) => normalizePath(name)).find((candidate) => {
+      if (used.has(candidate)) return false;
+      return this.indexer.sourceStats(candidate).audio === 0;
+    }) || normalizePath(`播客链接-${Date.now()}`);
+    this.settings.sources.push({
+      id: "source-podcast-links",
+      name: "播客收藏",
+      folder,
+      kind: "podlink",
+      group: "podlinks",
+      icon: "podcast",
+      coverPath: "",
+      enabled: true,
+    });
+    return true;
+  }
+
   private normalizeSourceGroupOrder(value: unknown): SourceGroup[] {
-    const defaults: SourceGroup[] = ["podcast", "music", "information", "skills", "bookshelf", "ideas", "needs"];
-    const requested = Array.isArray(value) ? value : [];
+    const defaults: SourceGroup[] = ["podcast", "podlinks", "music", "information", "skills", "bookshelf", "ideas", "needs"];
+    const requested = (Array.isArray(value) ? value : []).slice();
+    // Older saved orders don't know 播客收藏 yet: put it right after the TTS podcast group.
+    if (requested.length && !requested.includes("podlinks")) {
+      const at = requested.indexOf("podcast");
+      requested.splice(at >= 0 ? at + 1 : requested.length, 0, "podlinks");
+    }
     return [...requested.filter((entry): entry is SourceGroup => defaults.includes(entry as SourceGroup)), ...defaults]
       .filter((entry, index, array) => array.indexOf(entry) === index)
       .slice(0, defaults.length);
@@ -217,7 +255,7 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
 
   private normalizeSource(source: ContentSource): ContentSource {
     const folder = source.folder || "";
-    const requestedKind = ["book", "podcast", "music", "x", "news", "clip", "generic"].includes(source.kind)
+    const requestedKind = ["book", "podcast", "podlink", "music", "x", "news", "clip", "generic"].includes(source.kind)
       ? source.kind
       : "generic";
     const isYouTubeArticleFolder = folder.split("/").pop()?.trim().toLowerCase() === "youtube podcast";
@@ -226,7 +264,7 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
       name: source.name || "New source",
       folder,
       kind: isYouTubeArticleFolder ? "generic" : requestedKind,
-      group: (["information", "skills", "bookshelf", "ideas", "needs", "podcast", "music"] as SourceGroup[]).includes(source.group)
+      group: (["information", "skills", "bookshelf", "ideas", "needs", "podcast", "podlinks", "music"] as SourceGroup[]).includes(source.group)
         ? source.group
         : this.inferSourceGroup(source),
       icon: source.icon || "folder",
@@ -657,6 +695,7 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
 
   private inferSourceGroup(source: ContentSource): SourceGroup {
     const value = `${source.name || ""} ${source.folder || ""}`.toLowerCase();
+    if (source.kind === "podlink") return "podlinks";
     if (value.includes("tts audio") || source.kind === "podcast") return "podcast";
     if (value.includes("音乐") || value.includes("music") || source.kind === "music") return "music";
     if (value.includes("weave epub") || source.kind === "book") return "bookshelf";
@@ -897,6 +936,44 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
     }
     const content = `---\ntitle: ${JSON.stringify(title.trim() || t("网易云歌单"))}\nplaylist_url: ${url.trim()}\n---\n`;
     return this.app.vault.create(path, content);
+  }
+
+  /** Looks up a podcast link and saves the episode (audio + show notes) as a note in the source folder. */
+  async createPodcastEpisodeNote(source: ContentSource, link: string): Promise<{ file: TFile; episode: PodcastEpisode }> {
+    const episode = await resolvePodcastLink(link);
+    const folder = normalizePath(source.folder);
+    await this.ensureFolder(folder);
+    const existing = this.app.vault.getMarkdownFiles().find((file) => {
+      if (!file.path.startsWith(`${folder}/`)) return false;
+      const saved = this.app.metadataCache.getFileCache(file)?.frontmatter?.podcast_url;
+      return typeof saved === "string" && saved.trim() === episode.url;
+    });
+    if (existing && !episode.fromShowLink) return { file: existing, episode };
+    const title = episode.title || t("未命名单集");
+    const safeTitle = title.replace(/[\\/:*?"<>|#^[\]]/g, "-").slice(0, 100).trim() || t("未命名单集");
+    let path = normalizePath(`${folder}/${safeTitle}.md`);
+    let counter = 2;
+    while (this.app.vault.getAbstractFileByPath(path)) {
+      path = normalizePath(`${folder}/${safeTitle}-${counter}.md`);
+      counter += 1;
+    }
+    const fields: Array<[string, string | number]> = [
+      ["title", title],
+      ["podcast", episode.show],
+      ["platform", PODCAST_PLATFORM_LABELS[episode.platform]],
+      ["podcast_url", episode.url],
+      ["audio_url", episode.audioUrl],
+      ["cover", episode.cover],
+      ["published", episode.published],
+      ["duration", episode.duration],
+    ];
+    const yaml = fields
+      .filter(([, value]) => value !== "" && value !== 0)
+      .map(([key, value]) => `${key}: ${typeof value === "number" ? value : JSON.stringify(value)}`)
+      .join("\n");
+    const body = episode.notes.trim() || t("这一期没有 show notes。");
+    const file = await this.app.vault.create(path, `---\n${yaml}\n---\n\n${body}\n`);
+    return { file, episode };
   }
 
   /** Moves a music collection note to the trash (recoverable) and forgets its cached snapshot. */

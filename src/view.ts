@@ -26,6 +26,7 @@ import {
 import type { NetEasePlaylist } from "./main";
 import { isYouTubeUrl, youTubeEmbedUrl } from "./youtube";
 import { netEaseEmbed } from "./netease";
+import { extractPodcastUrl, podcastPlatform, spotifyEmbedUrl, timestampSeconds } from "./podcast";
 import { SOURCE_LABELS, TIME_LABELS, dateLocale, sourceLabel, t } from "./i18n";
 import { packName } from "./packs";
 
@@ -66,6 +67,8 @@ export class ContentLibraryView extends ItemView {
   private musicQueueTimer: number | null = null;
   private musicQueueToken = 0;
   private dockFrame: HTMLIFrameElement | null = null;
+  /** Audio element of the player on the open reading page (podcast links seek it from show notes). */
+  private readingAudio: HTMLAudioElement | null = null;
   private inspirationOffset = 0;
   private inspirationHourKey = "";
   private readingScrollCleanup: (() => void) | null = null;
@@ -462,6 +465,11 @@ export class ContentLibraryView extends ItemView {
   private async renderHome(main: HTMLElement): Promise<void> {
     const items = this.currentItems();
     const source = this.activeSource();
+    if (source?.kind === "podlink") {
+      this.renderHomeBanner(main, source, items.length, true);
+      this.renderPodcastLinkLibrary(main, source, items);
+      return;
+    }
     if (this.isMusicMode()) {
       this.renderHomeBanner(main, source, items.length, false);
       await this.renderMusicLibrary(main, items);
@@ -504,6 +512,42 @@ export class ContentLibraryView extends ItemView {
     });
     const grid = main.createDiv({ cls: "cld-library-grid cld-recent-grid" });
     for (const item of items.slice(0, 20)) this.renderContentCard(grid, item);
+  }
+
+  /** 播客收藏: episodes saved from Apple Podcasts / 小宇宙 / Spotify links. */
+  private renderPodcastLinkLibrary(main: HTMLElement, source: ContentSource, items: ContentItem[]): void {
+    const episodes = items.filter((item) => item.file.extension === "md");
+    const sectionHead = main.createDiv({ cls: "cld-section-head cld-music-section-head" });
+    const heading = sectionHead.createDiv();
+    heading.createEl("strong", { text: t("播客收藏") });
+    heading.createEl("p", { text: t("粘贴 Apple 播客、小宇宙或 Spotify 的单集链接，在这里收听并查看 show notes") });
+    const actions = sectionHead.createDiv({ cls: "cld-music-section-actions" });
+    actions.createEl("small", { text: t("{count} 期", { count: episodes.length }) });
+    const add = actions.createEl("button", { cls: "cld-text-button mod-cta", text: t("添加播客"), attr: { type: "button" } });
+    add.addEventListener("click", () => {
+      new PodcastLinkModal(this.app, source.name, async (link) => {
+        const notice = new Notice(t("正在获取节目信息…"), 0);
+        try {
+          const { file, episode } = await this.plugin.createPodcastEpisodeNote(source, link);
+          notice.hide();
+          if (episode.fromShowLink) new Notice(t("这是节目主页链接，已添加最新一期：{name}", { name: episode.title }), 6000);
+          else new Notice(t("已添加：{name}", { name: file.basename }));
+          if (episode.platform === "spotify" && !episode.audioUrl) new Notice(t("Spotify 不提供音频文件，这一期会用 Spotify 播放器播放。"), 6000);
+          await this.refresh();
+        } catch (error) {
+          notice.hide();
+          throw error;
+        }
+      }).open();
+    });
+    if (!episodes.length) {
+      const empty = main.createDiv({ cls: "cld-empty cld-glass" });
+      empty.createEl("strong", { text: t("还没有播客") });
+      empty.createEl("p", { text: t("点击右上角“添加播客”，粘贴分享链接即可。") });
+      return;
+    }
+    const grid = main.createDiv({ cls: "cld-library-grid cld-recent-grid" });
+    for (const item of episodes) this.renderContentCard(grid, item);
   }
 
   private async renderMusicLibrary(main: HTMLElement, items: ContentItem[]): Promise<void> {
@@ -1202,7 +1246,7 @@ export class ContentLibraryView extends ItemView {
       cover.addClass("has-image");
       cover.style.backgroundImage = `url("${coverUrl.replace(/"/g, "%22")}")`;
     }
-    if (item.kind === "podcast" && coverUrl) {
+    if ((item.kind === "podcast" || item.kind === "podlink") && coverUrl) {
       const cover = button.querySelector<HTMLElement>(".cld-card-cover");
       if (!cover) return;
       cover.addClass("has-podcast-badge");
@@ -1211,7 +1255,7 @@ export class ContentLibraryView extends ItemView {
       setIcon(badgeIcon, "play");
       badge.createSpan({ text: t("播客") });
     }
-    if (item.externalUrl && coverUrl) {
+    if (item.externalUrl && coverUrl && item.kind !== "podlink") {
       const cover = button.querySelector<HTMLElement>(".cld-card-cover");
       if (!cover) return;
       const host = cover.createEl("small", { cls: "cld-web-host", text: webHost(item.externalUrl) });
@@ -1296,7 +1340,7 @@ export class ContentLibraryView extends ItemView {
       : progress > 0 || saved?.state === "in-progress" ? "in-progress" : "unread";
     element.addClass(`is-${state}`);
         if (state === "complete") {
-      const doneLabel = item.kind === "podcast" ? t("已听完") : t("已读完");
+      const doneLabel = isListening(item) ? t("已听完") : t("已读完");
       element.setAttr("aria-label", doneLabel);
       element.setAttr("title", doneLabel);
       setIcon(element, "check");
@@ -1307,8 +1351,8 @@ export class ContentLibraryView extends ItemView {
       element.createSpan({ cls: "cld-status-progress", text: `${Math.max(1, Math.round(progress))}%` });
     }
     const label = state === "in-progress"
-      ? item.kind === "podcast" ? t("收听中") : t("阅读中")
-      : item.kind === "podcast" ? t("未听") : t("未读");
+      ? isListening(item) ? t("收听中") : t("阅读中")
+      : isListening(item) ? t("未听") : t("未读");
     element.setAttr("aria-label", label);
     element.setAttr("title", label);
   }
@@ -1324,8 +1368,8 @@ export class ContentLibraryView extends ItemView {
     event.preventDefault();
     const menu = new Menu();
     const progress = this.plugin.contentProgress(item.file);
-    const completeLabel = item.kind === "podcast" ? t("标记为已听完") : t("标记为已读");
-    const resetLabel = item.kind === "podcast" ? t("重新设为未听") : t("重新设为未读");
+    const completeLabel = isListening(item) ? t("标记为已听完") : t("标记为已读");
+    const resetLabel = isListening(item) ? t("重新设为未听") : t("重新设为未读");
     if (progress?.state !== "complete") {
       menu.addItem((entry) => entry.setTitle(completeLabel).setIcon("check").onClick(async () => {
         await this.plugin.markContentComplete(item.file);
@@ -1394,6 +1438,7 @@ export class ContentLibraryView extends ItemView {
     const continuingPodcast = Boolean(this.articleReturnItem && this.audio);
     if (continuingPodcast) this.renderContinuedPodcastPlayer(parent, this.articleReturnItem!);
     else if (audioUrl) this.renderReadingAudioPlayer(parent, item, audioUrl);
+    else if (item.kind === "podlink") this.renderPodcastEmbed(parent, item);
     const grid = parent.createDiv({ cls: "cld-reader-grid" });
     const header = grid.createEl("header", { cls: "cld-reader-header" });
     const headerCopy = header.createDiv();
@@ -1433,6 +1478,7 @@ export class ContentLibraryView extends ItemView {
     if (!this.articleReturnItem) this.renderReadingNavigation(headerActions, item);
     const article = grid.createEl("article", { cls: "cld-reading-page markdown-rendered" });
     await MarkdownRenderer.render(this.app, content, article, item.file.path, this);
+    if (item.kind === "podlink" && audioUrl && !continuingPodcast) this.linkShowNoteTimestamps(article);
     await this.applyAnnotationHighlights(article, item);
     article.setAttr("tabindex", "0");
     this.setupReadingCompletion(item, readState);
@@ -1815,7 +1861,7 @@ export class ContentLibraryView extends ItemView {
   private renderReadingAudioPlayer(parent: HTMLElement, item: ContentItem, audioUrl: string): void {
     const player = parent.createDiv({ cls: "cld-reading-audio cld-glass" });
     const label = player.createDiv();
-    label.createEl("small", { text: t("关联音频") });
+    label.createEl("small", { text: item.kind === "podlink" ? item.subtitle || t("播客") : t("关联音频") });
     label.createEl("strong", { text: item.title });
     const controls = player.createDiv({ cls: "cld-reading-audio-controls", attr: { "aria-label": t("文章关联音频播放器") } });
     const play = controls.createEl("button", {
@@ -1830,6 +1876,7 @@ export class ContentLibraryView extends ItemView {
     const time = controls.createEl("time", { cls: "cld-reading-audio-time", text: "0:00 / 0:00" });
     const audio = new Audio(audioUrl);
     audio.preload = "metadata";
+    this.readingAudio = audio;
     const updateTimeline = () => {
       const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
       const progress = duration > 0 ? Math.round((audio.currentTime / duration) * 1000) : 0;
@@ -1880,6 +1927,70 @@ export class ContentLibraryView extends ItemView {
         updateTimeline();
       }
     });
+  }
+
+  /** Platform player for podcast links without a direct audio file (Spotify). */
+  private renderPodcastEmbed(parent: HTMLElement, item: ContentItem): void {
+    const src = spotifyEmbedUrl(item.externalUrl);
+    const box = parent.createDiv({ cls: "cld-podcast-embed cld-glass" });
+    if (!src) {
+      box.createEl("p", { text: t("这一期没有找到可播放的音频。") });
+      const open = box.createEl("button", { cls: "cld-text-button", text: t("在平台中打开 ↗"), attr: { type: "button" } });
+      open.addEventListener("click", () => window.open(item.externalUrl, "_blank"));
+      return;
+    }
+    const frame = box.createEl("iframe", {
+      attr: {
+        src,
+        title: item.title,
+        height: "152",
+        allow: "autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture",
+        loading: "lazy",
+      },
+    });
+    frame.setAttribute("frameborder", "0");
+  }
+
+  /** Turns "05:30" / "1:02:03" in show notes into buttons that jump the player there. */
+  private linkShowNoteTimestamps(article: HTMLElement): void {
+    const pattern = /(?<![\d:])(?:\d{1,2}:)?\d{1,2}:\d{2}(?![\d:])/g;
+    const walker = document.createTreeWalker(article, NodeFilter.SHOW_TEXT, {
+      acceptNode: (node) => node.parentElement?.closest("a, code, pre, button") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+    });
+    const nodes: Text[] = [];
+    while (walker.nextNode()) {
+      const node = walker.currentNode as Text;
+      pattern.lastIndex = 0;
+      if (pattern.test(node.data)) nodes.push(node);
+    }
+    for (const node of nodes) {
+      const fragment = document.createDocumentFragment();
+      let last = 0;
+      for (const match of node.data.matchAll(pattern)) {
+        const index = match.index ?? 0;
+        fragment.append(node.data.slice(last, index));
+        const stamp = createEl("button", { cls: "cld-timestamp", text: match[0], attr: { type: "button", title: t("跳到 {time} 播放", { time: match[0] }) } });
+        const seconds = timestampSeconds(match[0]);
+        stamp.addEventListener("click", () => void this.seekReadingAudio(seconds));
+        fragment.append(stamp);
+        last = index + match[0].length;
+      }
+      fragment.append(node.data.slice(last));
+      node.replaceWith(fragment);
+    }
+  }
+
+  private async seekReadingAudio(seconds: number): Promise<void> {
+    const audio = this.readingAudio;
+    if (!audio) return;
+    const jump = () => { audio.currentTime = seconds; };
+    if (audio.readyState >= 1) jump();
+    else audio.addEventListener("loadedmetadata", jump, { once: true });
+    try {
+      await audio.play();
+    } catch {
+      new Notice(t("系统阻止了播放，请再点击一次播放键。"), 3500);
+    }
   }
 
   private renderContinuedPodcastPlayer(parent: HTMLElement, item: ContentItem): void {
@@ -2618,6 +2729,10 @@ function openExternalUrl(url: string, _appPath = ""): Promise<void> {
   return Promise.resolve();
 }
 
+function isListening(item: ContentItem): boolean {
+  return item.kind === "podcast" || item.kind === "podlink";
+}
+
 function isQqMusicUrl(url: string): boolean {
   return /(?:^|\/)(?:y\.qq\.com|i\.y\.qq\.com|c6\.y\.qq\.com)\//i.test(url);
 }
@@ -2749,6 +2864,58 @@ class AnnotationDeleteModal extends Modal {
         remove.disabled = false;
       }
     });
+  }
+
+  override onClose(): void {
+    this.contentEl.empty();
+  }
+}
+
+class PodcastLinkModal extends Modal {
+  constructor(
+    app: App,
+    private sourceName: string,
+    private onSubmitLink: (link: string) => Promise<void>,
+  ) {
+    super(app);
+  }
+
+  override onOpen(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass("cld-note-modal");
+    contentEl.createEl("h2", { text: t("添加播客") });
+    contentEl.createEl("p", { text: `${t("保存到：{name}", { name: this.sourceName })} · ${t("粘贴单集分享链接即可")}` });
+    const form = contentEl.createEl("form", { cls: "cld-note-modal-form" });
+    const input = form.createEl("input", {
+      cls: "cld-note-title-input",
+      attr: { type: "text", placeholder: t("Apple 播客 / 小宇宙 / Spotify 链接"), autocomplete: "off", "aria-label": t("播客链接") },
+    });
+    const actions = form.createDiv({ cls: "cld-note-modal-actions" });
+    const cancel = actions.createEl("button", { text: t("取消"), attr: { type: "button" } });
+    const create = actions.createEl("button", { cls: "mod-cta", text: t("添加"), attr: { type: "submit" } });
+    cancel.addEventListener("click", () => this.close());
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const link = extractPodcastUrl(input.value);
+      if (!podcastPlatform(link)) {
+        new Notice(t("请粘贴 Apple 播客、小宇宙或 Spotify 的分享链接。"));
+        input.focus();
+        return;
+      }
+      create.disabled = true;
+      create.setText(t("获取中…"));
+      try {
+        await this.onSubmitLink(link);
+        this.close();
+      } catch (error) {
+        console.warn("[Content Library] Podcast link failed", error);
+        new Notice(t("没能读取这个链接，请确认是单集或节目的公开分享链接。"), 6000);
+        create.disabled = false;
+        create.setText(t("添加"));
+      }
+    });
+    window.setTimeout(() => input.focus(), 0);
   }
 
   override onClose(): void {

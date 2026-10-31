@@ -253,7 +253,7 @@ export class ContentLibrarySettingsTab extends PluginSettingTab {
       dropdown.setValue(source.folder).onChange(async (value) => {
         source.folder = value;
         source.kind = this.plugin.indexer.inferSourceKind(value, source.kind);
-        source.icon = source.kind === "podcast" ? "headphones" : "folder";
+        source.icon = source.kind === "podcast" ? "headphones" : source.kind === "podlink" ? "podcast" : "folder";
         if ((!source.name || source.name === "新文件夹" || source.name === "New folder") && value) {
           source.name = value.split("/").pop() || t("文件夹");
         }

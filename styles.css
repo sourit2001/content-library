@@ -1748,3 +1748,23 @@
 
 .cld-music-track.is-unavailable { opacity: 0.45; }
 .cld-music-track.is-unavailable:hover { opacity: 0.75; }
+
+/* 播客收藏: Spotify embed and clickable show-note timestamps */
+.cld-podcast-embed { margin-bottom: 16px; padding: 10px; border-radius: 18px; }
+.cld-podcast-embed iframe { display: block; width: 100%; border: 0; border-radius: 12px; }
+.cld-podcast-embed p { margin: 0 0 8px; color: var(--cld-muted); }
+.cld-reading-page .cld-timestamp {
+  display: inline;
+  height: auto;
+  margin: 0 1px;
+  padding: 0 5px;
+  border: 0;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
+  box-shadow: none;
+  color: var(--interactive-accent);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.cld-reading-page .cld-timestamp:hover { background: color-mix(in srgb, var(--interactive-accent) 26%, transparent); }

@@ -127,7 +127,7 @@ export class VaultContentIndexer {
     const embedAudio = cache?.embeds?.find((embed) => /\.(mp3|m4a|wav|flac|aac)$/i.test(embed.link))?.link ?? "";
     const linkedAudio = cache?.links?.find((link) => /\.(mp3|m4a|wav|flac|aac|ogg|opus)$/i.test(link.link))?.link ?? "";
     const bodyUrl = cache?.links?.find((link) => /^https?:\/\//i.test(link.link))?.link ?? "";
-    const externalUrl = firstString(playlistUrl, frontmatter.source, frontmatter.url, frontmatter.link, bodyUrl);
+    const externalUrl = firstString(playlistUrl, frontmatter.podcast_url, frontmatter.source, frontmatter.url, frontmatter.link, bodyUrl);
     const progress = parseProgress(frontmatter["reading-progress"] ?? frontmatter.progress);
     const notePath = isAudioFile ? notesByTitle.get(title) ?? "" : file.path;
     return {
@@ -160,6 +160,6 @@ export class VaultContentIndexer {
   }
 
   kindLabel(kind: SourceKind): string {
-    return ({ book: t("书籍"), podcast: t("播客"), music: t("音乐"), x: t("X 推文"), news: t("新闻"), clip: t("网页收藏"), generic: t("笔记") })[kind];
+    return ({ book: t("书籍"), podcast: t("播客"), podlink: t("播客"), music: t("音乐"), x: t("X 推文"), news: t("新闻"), clip: t("网页收藏"), generic: t("笔记") })[kind];
   }
 }
