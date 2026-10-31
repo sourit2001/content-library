@@ -2821,7 +2821,7 @@ var AIChatView = class extends import_obsidian7.ItemView {
       const tab = tabs.createEl("button", { cls: "cld-ai-tab", text: provider.label });
       tab.toggleClass("is-active", provider.id === this.conversation.provider);
       const state = provider.id === "deepseek" ? this.plugin.settings.deepseekApiKey ? "ok" : "off" : this.cliState(provider.id);
-      tab.createSpan({ cls: `cld-ai-dot is-${state}` });
+      tab.createSpan({ cls: `cld-ai-dot is-${state}`, attr: { "data-provider": provider.id } });
       tab.addEventListener("click", () => this.switchProvider(provider.id));
     }
     const actions = header.createDiv({ cls: "cld-ai-actions" });
@@ -2900,7 +2900,8 @@ var AIChatView = class extends import_obsidian7.ItemView {
     const label = this.contentEl.querySelector(".cld-ai-chip .cld-ai-chip-label");
     if (!label) return;
     const note = this.attachNote ? this.currentNote() : null;
-    label.textContent = note ? t("\u9644\u5E26\uFF1A{name}", { name: note.basename }) : t("\u9644\u5E26\u5F53\u524D\u7B14\u8BB0");
+    const next = note ? t("\u9644\u5E26\uFF1A{name}", { name: note.basename }) : t("\u9644\u5E26\u5F53\u524D\u7B14\u8BB0");
+    if (label.textContent !== next) label.textContent = next;
   }
   iconButton(parent, icon, label, onClick) {
     const button = parent.createEl("button", { cls: "cld-ai-icon clickable-icon", attr: { "aria-label": label } });
@@ -2971,7 +2972,7 @@ var AIChatView = class extends import_obsidian7.ItemView {
       new import_obsidian7.Notice(t("\u5DF2\u590D\u5236"));
     });
   }
-  renderMessage(parent, message) {
+  renderMessage(parent, message, prerendered) {
     const wrap = parent.createDiv({ cls: `cld-ai-msg is-${message.role}` });
     const meta = wrap.createDiv({ cls: "cld-ai-meta" });
     meta.setText(`${message.role === "user" ? t("\u6211") : providerInfo(this.conversation.provider).label} \xB7 ${new Date(message.time).toLocaleTimeString(dateLocale(), { hour: "2-digit", minute: "2-digit" })}`);
@@ -2979,7 +2980,8 @@ var AIChatView = class extends import_obsidian7.ItemView {
     if (message.role === "user") {
       bubble.setText(message.text);
     } else {
-      void import_obsidian7.MarkdownRenderer.render(this.app, message.text, bubble, this.conversation.file?.path ?? "", this);
+      if (prerendered) bubble.append(...Array.from(prerendered.childNodes));
+      else void import_obsidian7.MarkdownRenderer.render(this.app, message.text, bubble, this.conversation.file?.path ?? "", this);
       const copy = wrap.createEl("button", { cls: "cld-ai-copy clickable-icon", attr: { "aria-label": t("\u590D\u5236") } });
       (0, import_obsidian7.setIcon)(copy, "copy");
       copy.addEventListener("click", async () => {
@@ -3056,13 +3058,30 @@ var AIChatView = class extends import_obsidian7.ItemView {
   async checkProviders(force = false) {
     if (!cliSupported()) return;
     const ids = ["claude", "codex", "grok"];
-    for (const id of ids) if (force || !this.status.has(id)) this.status.set(id, "checking");
-    this.render();
-    await Promise.all(ids.map(async (id) => {
-      if (!force && this.status.get(id) !== "checking") return;
+    const pending = ids.filter((id) => force || !this.status.has(id) || this.status.get(id) === "checking");
+    if (pending.length === 0) return;
+    for (const id of pending) this.status.set(id, "checking");
+    if (force) this.refreshStatus();
+    await Promise.all(pending.map(async (id) => {
       this.status.set(id, await detectCli(id, this.plugin.settings.aiCliPaths[id] ?? ""));
     }));
-    if (!this.run) this.render();
+    this.refreshStatus();
+  }
+  /** Update the status dots, and the empty-state card if it's showing, without rebuilding the panel. */
+  refreshStatus() {
+    this.contentEl.querySelectorAll(".cld-ai-dot[data-provider]").forEach((dot) => {
+      const id = dot.dataset.provider;
+      const state = id === "deepseek" ? this.plugin.settings.deepseekApiKey ? "ok" : "off" : this.cliState(id);
+      dot.className = `cld-ai-dot is-${state}`;
+    });
+    if (!this.showHistory && this.messagesEl && this.conversation.messages.length === 0 && !this.run) {
+      this.messagesEl.empty();
+      this.renderEmptyState(this.messagesEl);
+    }
+  }
+  nearBottom() {
+    const el = this.messagesEl;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 80;
   }
   async send() {
     const text = this.inputEl.value.trim();
@@ -3100,6 +3119,8 @@ ${content.slice(0, 3e4)}`;
     this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
     this.activityEl.setText(t("\u6B63\u5728\u8FDE\u63A5 {name}\u2026", { name: providerInfo(conversation.provider).label }));
     const settings = this.plugin.settings;
+    let latest = "";
+    let frame = 0;
     this.run = runAI({
       provider: conversation.provider,
       prompt,
@@ -3112,10 +3133,18 @@ ${content.slice(0, 3e4)}`;
       deepseekKey: settings.deepseekApiKey,
       deepseekModel: settings.deepseekModel,
       onText: (full) => {
-        bubble.empty();
-        bubble.addClass("is-streaming");
-        bubble.setText(full);
-        this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+        latest = full;
+        if (frame) return;
+        frame = window.requestAnimationFrame(() => {
+          frame = 0;
+          const stick = this.nearBottom();
+          if (!bubble.hasClass("is-streaming")) {
+            bubble.empty();
+            bubble.addClass("is-streaming");
+          }
+          bubble.textContent = latest;
+          if (stick) this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+        });
       },
       onActivity: (label) => this.activityEl.setText(label)
     });
@@ -3125,11 +3154,22 @@ ${content.slice(0, 3e4)}`;
       if (result.sessionId) conversation.sessionId = result.sessionId;
       const reply = { role: "assistant", text: result.text || t("\uFF08\u6CA1\u6709\u8FD4\u56DE\u5185\u5BB9\uFF09"), time: Date.now() };
       conversation.messages.push(reply);
-      pending.remove();
-      if (this.conversation === conversation && !this.showHistory) this.renderMessage(this.messagesEl, reply);
+      if (frame) window.cancelAnimationFrame(frame);
+      if (this.conversation === conversation && !this.showHistory && pending.isConnected) {
+        const stick = this.nearBottom();
+        const rendered = createDiv();
+        await import_obsidian7.MarkdownRenderer.render(this.app, reply.text, rendered, conversation.file?.path ?? "", this);
+        const finished = this.renderMessage(createDiv(), reply, rendered);
+        pending.replaceWith(finished);
+        if (stick) this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+      } else {
+        pending.remove();
+      }
       await this.save(conversation);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      if (frame) window.cancelAnimationFrame(frame);
+      frame = 0;
       bubble.empty();
       bubble.removeClass("is-streaming");
       pending.addClass("is-error");

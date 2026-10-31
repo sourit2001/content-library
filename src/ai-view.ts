@@ -99,7 +99,7 @@ export class AIChatView extends ItemView {
       tab.toggleClass("is-active", provider.id === this.conversation.provider);
       const state = provider.id === "deepseek" ? (this.plugin.settings.deepseekApiKey ? "ok" : "off")
         : this.cliState(provider.id as CliProviderId);
-      tab.createSpan({ cls: `cld-ai-dot is-${state}` });
+      tab.createSpan({ cls: `cld-ai-dot is-${state}`, attr: { "data-provider": provider.id } });
       tab.addEventListener("click", () => this.switchProvider(provider.id));
     }
     const actions = header.createDiv({ cls: "cld-ai-actions" });
@@ -183,7 +183,8 @@ export class AIChatView extends ItemView {
     const label = this.contentEl.querySelector(".cld-ai-chip .cld-ai-chip-label");
     if (!label) return;
     const note = this.attachNote ? this.currentNote() : null;
-    label.textContent = note ? t("附带：{name}", { name: note.basename }) : t("附带当前笔记");
+    const next = note ? t("附带：{name}", { name: note.basename }) : t("附带当前笔记");
+    if (label.textContent !== next) label.textContent = next;
   }
 
   private iconButton(parent: HTMLElement, icon: string, label: string, onClick: () => void): HTMLElement {
@@ -261,7 +262,7 @@ export class AIChatView extends ItemView {
     });
   }
 
-  private renderMessage(parent: HTMLElement, message: AIMessage): HTMLElement {
+  private renderMessage(parent: HTMLElement, message: AIMessage, prerendered?: HTMLElement): HTMLElement {
     const wrap = parent.createDiv({ cls: `cld-ai-msg is-${message.role}` });
     const meta = wrap.createDiv({ cls: "cld-ai-meta" });
     meta.setText(`${message.role === "user" ? t("我") : providerInfo(this.conversation.provider).label} · ${new Date(message.time).toLocaleTimeString(dateLocale(), { hour: "2-digit", minute: "2-digit" })}`);
@@ -269,7 +270,8 @@ export class AIChatView extends ItemView {
     if (message.role === "user") {
       bubble.setText(message.text);
     } else {
-      void MarkdownRenderer.render(this.app, message.text, bubble, this.conversation.file?.path ?? "", this);
+      if (prerendered) bubble.append(...Array.from(prerendered.childNodes));
+      else void MarkdownRenderer.render(this.app, message.text, bubble, this.conversation.file?.path ?? "", this);
       const copy = wrap.createEl("button", { cls: "cld-ai-copy clickable-icon", attr: { "aria-label": t("复制") } });
       setIcon(copy, "copy");
       copy.addEventListener("click", async () => {
@@ -357,13 +359,32 @@ export class AIChatView extends ItemView {
   private async checkProviders(force = false): Promise<void> {
     if (!cliSupported()) return;
     const ids: CliProviderId[] = ["claude", "codex", "grok"];
-    for (const id of ids) if (force || !this.status.has(id)) this.status.set(id, "checking");
-    this.render();
-    await Promise.all(ids.map(async (id) => {
-      if (!force && this.status.get(id) !== "checking") return;
+    const pending = ids.filter((id) => force || !this.status.has(id) || this.status.get(id) === "checking");
+    if (pending.length === 0) return;
+    for (const id of pending) this.status.set(id, "checking");
+    if (force) this.refreshStatus();
+    await Promise.all(pending.map(async (id) => {
       this.status.set(id, await detectCli(id, this.plugin.settings.aiCliPaths[id] ?? ""));
     }));
-    if (!this.run) this.render();
+    this.refreshStatus();
+  }
+
+  /** Update the status dots, and the empty-state card if it's showing, without rebuilding the panel. */
+  private refreshStatus(): void {
+    this.contentEl.querySelectorAll<HTMLElement>(".cld-ai-dot[data-provider]").forEach((dot) => {
+      const id = dot.dataset.provider as AIProviderId;
+      const state = id === "deepseek" ? (this.plugin.settings.deepseekApiKey ? "ok" : "off") : this.cliState(id as CliProviderId);
+      dot.className = `cld-ai-dot is-${state}`;
+    });
+    if (!this.showHistory && this.messagesEl && this.conversation.messages.length === 0 && !this.run) {
+      this.messagesEl.empty();
+      this.renderEmptyState(this.messagesEl);
+    }
+  }
+
+  private nearBottom(): boolean {
+    const el = this.messagesEl;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 80;
   }
 
   private async send(): Promise<void> {
@@ -399,6 +420,8 @@ export class AIChatView extends ItemView {
     this.activityEl.setText(t("正在连接 {name}…", { name: providerInfo(conversation.provider).label }));
 
     const settings = this.plugin.settings;
+    let latest = "";
+    let frame = 0;
     this.run = runAI({
       provider: conversation.provider,
       prompt,
@@ -411,10 +434,18 @@ export class AIChatView extends ItemView {
       deepseekKey: settings.deepseekApiKey,
       deepseekModel: settings.deepseekModel,
       onText: (full) => {
-        bubble.empty();
-        bubble.addClass("is-streaming");
-        bubble.setText(full);
-        this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+        latest = full;
+        if (frame) return;
+        frame = window.requestAnimationFrame(() => {
+          frame = 0;
+          const stick = this.nearBottom();
+          if (!bubble.hasClass("is-streaming")) {
+            bubble.empty();
+            bubble.addClass("is-streaming");
+          }
+          bubble.textContent = latest;
+          if (stick) this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+        });
       },
       onActivity: (label) => this.activityEl.setText(label),
     });
@@ -425,11 +456,23 @@ export class AIChatView extends ItemView {
       if (result.sessionId) conversation.sessionId = result.sessionId;
       const reply: AIMessage = { role: "assistant", text: result.text || t("（没有返回内容）"), time: Date.now() };
       conversation.messages.push(reply);
-      pending.remove();
-      if (this.conversation === conversation && !this.showHistory) this.renderMessage(this.messagesEl, reply);
+      if (frame) window.cancelAnimationFrame(frame);
+      if (this.conversation === conversation && !this.showHistory && pending.isConnected) {
+        // Render the Markdown off-screen, then swap it in so the bubble never goes blank.
+        const stick = this.nearBottom();
+        const rendered = createDiv();
+        await MarkdownRenderer.render(this.app, reply.text, rendered, conversation.file?.path ?? "", this);
+        const finished = this.renderMessage(createDiv(), reply, rendered);
+        pending.replaceWith(finished);
+        if (stick) this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+      } else {
+        pending.remove();
+      }
       await this.save(conversation);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      if (frame) window.cancelAnimationFrame(frame);
+      frame = 0;
       bubble.empty();
       bubble.removeClass("is-streaming");
       pending.addClass("is-error");
