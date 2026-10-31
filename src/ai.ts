@@ -72,6 +72,8 @@ export interface AIRunOptions {
   sessionId: string;
   cwd: string;
   binPath: string;
+  /** Proxy URL for the CLI (e.g. http://127.0.0.1:7890); empty = detect automatically. */
+  proxy: string;
   /** Optional model override for the CLI (empty = the CLI's own default). */
   model: string;
   deepseekKey: string;
@@ -224,7 +226,7 @@ async function loginShellPath(_shell: string): Promise<string> {
 
 const SHELL_ENV_KEYS = /^(https?_proxy|all_proxy|no_proxy|socks_proxy|ANTHROPIC_\w+|CLAUDE_\w+|OPENAI_\w+|CODEX_\w+|XAI_\w+|GROK_\w+|NODE_EXTRA_CA_CERTS|SSL_CERT_FILE|LANG|LC_ALL)$/i;
 
-async function childEnv(): Promise<Record<string, string | undefined>> {
+async function childEnv(proxyOverride = ""): Promise<Record<string, string | undefined>> {
   const proc = (globalThis as unknown as { process?: { env: Record<string, string | undefined> } }).process;
   const fromShell = await loginShellEnv();
   const extra: Record<string, string> = {};
@@ -233,6 +235,13 @@ async function childEnv(): Promise<Record<string, string | undefined>> {
   // VPN apps usually set the macOS *system* proxy. Codex follows it, but Node-based CLIs
   // (Claude Code) don't, so their requests leave without the VPN and get refused
   // (Anthropic answers "403 Request not allowed"). Hand the system proxy to the CLI.
+  if (proxyOverride.trim()) {
+    const url = /^\w+:\/\//.test(proxyOverride.trim()) ? proxyOverride.trim() : `http://${proxyOverride.trim()}`;
+    env.HTTPS_PROXY = url;
+    env.HTTP_PROXY = url;
+    env.NO_PROXY = env.NO_PROXY ?? "localhost,127.0.0.1,::1";
+    return env;
+  }
   const hasProxy = Object.keys(env).some((key) => /^(https?_proxy|all_proxy)$/i.test(key) && env[key]);
   if (!hasProxy) {
     const proxy = await systemProxy();
@@ -357,7 +366,7 @@ function runCli(options: AIRunOptions): AIRun {
     let prompt = resume ? options.prompt : promptWithHistory(options.history, options.prompt);
     if (prompt.startsWith("-")) prompt = ` ${prompt}`; // never let a prompt be read as a flag
     const args = cliArgs(provider, prompt, sessionId, options.cwd, resume, options.model);
-    const env = await childEnv();
+    const env = await childEnv(options.proxy);
     // If Obsidian was started from inside a Claude Code terminal, don't look like a nested session.
     if (provider === "claude") for (const key of ["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSION_ID"]) delete env[key];
 

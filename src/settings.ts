@@ -175,6 +175,16 @@ export class ContentLibrarySettingsTab extends PluginSettingTab {
           this.plugin.settings.aiChatFolder = value.trim() || "AI 对话";
           await this.plugin.saveSettings(false);
         }));
+    new Setting(containerEl)
+      .setName(t("代理地址（可选）"))
+      .setDesc(t("Claude Code 不会自动走 VPN。留空时插件会自动读取系统代理；连不上（比如报 403）时，填你 VPN 的本地代理地址，例如 http://127.0.0.1:7890。"))
+      .addText((text) => text
+        .setPlaceholder(t("自动"))
+        .setValue(this.plugin.settings.aiProxy)
+        .onChange(async (value) => {
+          this.plugin.settings.aiProxy = value.trim();
+          await this.plugin.saveSettings(false);
+        }));
     for (const [id, label] of [["claude", "Claude Code"], ["codex", "Codex CLI"], ["grok", "Grok CLI"]] as const) {
       new Setting(containerEl)
         .setName(t("{name} 路径（可选）", { name: label }))

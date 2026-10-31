@@ -370,6 +370,7 @@ export class AIChatView extends ItemView {
       sessionId: conversation.sessionId,
       cwd: vaultPath(this.app),
       binPath: conversation.provider === "deepseek" ? "" : settings.aiCliPaths[conversation.provider] ?? "",
+      proxy: settings.aiProxy,
       model: conversation.provider === "deepseek" ? "" : settings.aiCliModels[conversation.provider] ?? "",
       deepseekKey: settings.deepseekApiKey,
       deepseekModel: settings.deepseekModel,

@@ -83,6 +83,8 @@ export interface DashboardSettings {
   aiCliPaths: Partial<Record<"claude" | "codex" | "grok", string>>;
   /** Optional model per CLI; empty uses the CLI's own default. */
   aiCliModels: Partial<Record<"claude" | "codex" | "grok", string>>;
+  /** Proxy for the CLIs; empty = use the shell's or macOS system proxy. */
+  aiProxy: string;
   deepseekApiKey: string;
   deepseekModel: string;
   /** Set once the 播客收藏 (podcast links) source has been offered, so removing it sticks. */
@@ -173,6 +175,7 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
   aiAttachActiveNote: false,
   aiCliPaths: {},
   aiCliModels: {},
+  aiProxy: "",
   deepseekApiKey: "",
   deepseekModel: "deepseek-chat",
   podcastLinksSeeded: false,

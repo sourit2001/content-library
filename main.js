@@ -504,7 +504,10 @@ var EN = {
   "\u6CA1\u80FD\u8BFB\u53D6\u8FD9\u4E2A\u94FE\u63A5\uFF0C\u8BF7\u786E\u8BA4\u662F\u5355\u96C6\u6216\u8282\u76EE\u7684\u516C\u5F00\u5206\u4EAB\u94FE\u63A5\u3002": "Couldn't read this link. Check that it's a public episode or show link.",
   "\u672A\u547D\u540D\u5355\u96C6": "Untitled episode",
   "\u8FD9\u4E00\u671F\u6CA1\u6709 show notes\u3002": "This episode has no show notes.",
-  "\u5DF2\u6DFB\u52A0\uFF1A{name}": "Added: {name}"
+  "\u5DF2\u6DFB\u52A0\uFF1A{name}": "Added: {name}",
+  "\u4EE3\u7406\u5730\u5740\uFF08\u53EF\u9009\uFF09": "Proxy (optional)",
+  "Claude Code \u4E0D\u4F1A\u81EA\u52A8\u8D70 VPN\u3002\u7559\u7A7A\u65F6\u63D2\u4EF6\u4F1A\u81EA\u52A8\u8BFB\u53D6\u7CFB\u7EDF\u4EE3\u7406\uFF1B\u8FDE\u4E0D\u4E0A\uFF08\u6BD4\u5982\u62A5 403\uFF09\u65F6\uFF0C\u586B\u4F60 VPN \u7684\u672C\u5730\u4EE3\u7406\u5730\u5740\uFF0C\u4F8B\u5982 http://127.0.0.1:7890\u3002": "Claude Code doesn't follow your VPN on its own. Left empty, the plugin uses the system proxy; if it can't connect (e.g. a 403), enter your VPN's local proxy address, such as http://127.0.0.1:7890.",
+  "\u81EA\u52A8": "Auto"
 };
 
 // src/i18n.ts
@@ -1211,6 +1214,7 @@ var DEFAULT_SETTINGS = {
   aiAttachActiveNote: false,
   aiCliPaths: {},
   aiCliModels: {},
+  aiProxy: "",
   deepseekApiKey: "",
   deepseekModel: "deepseek-chat",
   podcastLinksSeeded: false
@@ -2050,6 +2054,10 @@ var ContentLibrarySettingsTab = class extends import_obsidian5.PluginSettingTab 
       this.plugin.settings.aiChatFolder = value.trim() || "AI \u5BF9\u8BDD";
       await this.plugin.saveSettings(false);
     }));
+    new import_obsidian5.Setting(containerEl).setName(t("\u4EE3\u7406\u5730\u5740\uFF08\u53EF\u9009\uFF09")).setDesc(t("Claude Code \u4E0D\u4F1A\u81EA\u52A8\u8D70 VPN\u3002\u7559\u7A7A\u65F6\u63D2\u4EF6\u4F1A\u81EA\u52A8\u8BFB\u53D6\u7CFB\u7EDF\u4EE3\u7406\uFF1B\u8FDE\u4E0D\u4E0A\uFF08\u6BD4\u5982\u62A5 403\uFF09\u65F6\uFF0C\u586B\u4F60 VPN \u7684\u672C\u5730\u4EE3\u7406\u5730\u5740\uFF0C\u4F8B\u5982 http://127.0.0.1:7890\u3002")).addText((text) => text.setPlaceholder(t("\u81EA\u52A8")).setValue(this.plugin.settings.aiProxy).onChange(async (value) => {
+      this.plugin.settings.aiProxy = value.trim();
+      await this.plugin.saveSettings(false);
+    }));
     for (const [id, label] of [["claude", "Claude Code"], ["codex", "Codex CLI"], ["grok", "Grok CLI"]]) {
       new import_obsidian5.Setting(containerEl).setName(t("{name} \u8DEF\u5F84\uFF08\u53EF\u9009\uFF09", { name: label })).setDesc(t("\u4E00\u822C\u4F1A\u81EA\u52A8\u627E\u5230\u3002\u68C0\u6D4B\u4E0D\u5230\u65F6\u586B\u5B8C\u6574\u8DEF\u5F84\uFF0C\u6BD4\u5982\u5728\u7EC8\u7AEF\u8FD0\u884C which {cli} \u5F97\u5230\u7684\u7ED3\u679C\u3002", { cli: id })).addText((text) => text.setPlaceholder(id === "claude" ? "~/.local/bin/claude" : `/opt/homebrew/bin/${id}`).setValue(this.plugin.settings.aiCliPaths[id] ?? "").onChange(async (value) => {
         this.plugin.settings.aiCliPaths[id] = value.trim().replace(/^~(?=\/)/, globalThis.process?.env.HOME ?? "~");
@@ -2320,12 +2328,19 @@ async function loginShellPath(_shell) {
   return (await loginShellEnv()).PATH ?? "";
 }
 var SHELL_ENV_KEYS = /^(https?_proxy|all_proxy|no_proxy|socks_proxy|ANTHROPIC_\w+|CLAUDE_\w+|OPENAI_\w+|CODEX_\w+|XAI_\w+|GROK_\w+|NODE_EXTRA_CA_CERTS|SSL_CERT_FILE|LANG|LC_ALL)$/i;
-async function childEnv() {
+async function childEnv(proxyOverride = "") {
   const proc = globalThis.process;
   const fromShell = await loginShellEnv();
   const extra = {};
   for (const [key, value] of Object.entries(fromShell)) if (SHELL_ENV_KEYS.test(key)) extra[key] = value;
   const env = { ...proc?.env ?? {}, ...extra, PATH: await searchPath(), NO_COLOR: "1", TERM: "dumb" };
+  if (proxyOverride.trim()) {
+    const url = /^\w+:\/\//.test(proxyOverride.trim()) ? proxyOverride.trim() : `http://${proxyOverride.trim()}`;
+    env.HTTPS_PROXY = url;
+    env.HTTP_PROXY = url;
+    env.NO_PROXY = env.NO_PROXY ?? "localhost,127.0.0.1,::1";
+    return env;
+  }
   const hasProxy = Object.keys(env).some((key) => /^(https?_proxy|all_proxy)$/i.test(key) && env[key]);
   if (!hasProxy) {
     const proxy = await systemProxy();
@@ -2442,7 +2457,7 @@ function runCli(options) {
     let prompt = resume ? options.prompt : promptWithHistory(options.history, options.prompt);
     if (prompt.startsWith("-")) prompt = ` ${prompt}`;
     const args = cliArgs(provider, prompt, sessionId, options.cwd, resume, options.model);
-    const env = await childEnv();
+    const env = await childEnv(options.proxy);
     if (provider === "claude") for (const key of ["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSION_ID"]) delete env[key];
     return new Promise((resolve, reject) => {
       let text = "";
@@ -3057,6 +3072,7 @@ ${content.slice(0, 3e4)}`;
       sessionId: conversation.sessionId,
       cwd: vaultPath(this.app),
       binPath: conversation.provider === "deepseek" ? "" : settings.aiCliPaths[conversation.provider] ?? "",
+      proxy: settings.aiProxy,
       model: conversation.provider === "deepseek" ? "" : settings.aiCliModels[conversation.provider] ?? "",
       deepseekKey: settings.deepseekApiKey,
       deepseekModel: settings.deepseekModel,
@@ -6331,6 +6347,7 @@ var ContentLibraryDashboardPlugin = class extends import_obsidian9.Plugin {
       aiAttachActiveNote: loaded?.aiAttachActiveNote === true,
       aiCliPaths: loaded?.aiCliPaths && typeof loaded.aiCliPaths === "object" ? loaded.aiCliPaths : {},
       aiCliModels: loaded?.aiCliModels && typeof loaded.aiCliModels === "object" ? loaded.aiCliModels : {},
+      aiProxy: typeof loaded?.aiProxy === "string" ? loaded.aiProxy : "",
       deepseekApiKey: typeof loaded?.deepseekApiKey === "string" ? loaded.deepseekApiKey : "",
       deepseekModel: typeof loaded?.deepseekModel === "string" && loaded.deepseekModel ? loaded.deepseekModel : DEFAULT_SETTINGS.deepseekModel
     };

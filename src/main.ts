@@ -210,6 +210,7 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
       aiAttachActiveNote: loaded?.aiAttachActiveNote === true,
       aiCliPaths: loaded?.aiCliPaths && typeof loaded.aiCliPaths === "object" ? loaded.aiCliPaths : {},
       aiCliModels: loaded?.aiCliModels && typeof loaded.aiCliModels === "object" ? loaded.aiCliModels : {},
+      aiProxy: typeof loaded?.aiProxy === "string" ? loaded.aiProxy : "",
       deepseekApiKey: typeof loaded?.deepseekApiKey === "string" ? loaded.deepseekApiKey : "",
       deepseekModel: typeof loaded?.deepseekModel === "string" && loaded.deepseekModel ? loaded.deepseekModel : DEFAULT_SETTINGS.deepseekModel,
     };
