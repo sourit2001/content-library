@@ -22,6 +22,10 @@ export interface MusicTrackSnapshot {
   album: string;
   cover: string;
   url: string;
+  /** Length in ms, when the platform reports it. */
+  duration?: number;
+  /** false when the platform says it can't be played without the app / VIP (copyright). */
+  playable?: boolean;
 }
 
 export interface MusicCollectionSnapshot {
@@ -31,7 +35,7 @@ export interface MusicCollectionSnapshot {
   creator: string;
   trackCount: number;
   tracks: MusicTrackSnapshot[];
-  collectionType?: "playlist" | "album" | "program" | "song";
+  collectionType?: "playlist" | "album" | "program" | "song" | "video";
 }
 
 export interface ContentSource {

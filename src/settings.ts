@@ -264,7 +264,7 @@ export class ContentLibrarySettingsTab extends PluginSettingTab {
     body.createEl("p", {
       cls: "setting-item-description",
       text: stats.playlists > 0
-        ? t("已识别为音乐歌单文件夹。Markdown 文件的 playlist_url 会同步网易云歌单。")
+        ? t("已识别为音乐歌单文件夹。Markdown 文件的 playlist_url 会同步网易云、QQ 音乐歌单或 YouTube 视频。")
         : stats.audio > 0
         ? t("已自动识别为音频播放列表。")
         : t("已自动识别为笔记文件夹。"),
