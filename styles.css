@@ -2107,3 +2107,10 @@
   cursor: pointer;
 }
 .cld-reading-page .cld-timestamp:hover { background: color-mix(in srgb, var(--interactive-accent) 26%, transparent); }
+
+.cld-ai-chip-label {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

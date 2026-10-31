@@ -507,7 +507,9 @@ var EN = {
   "\u5DF2\u6DFB\u52A0\uFF1A{name}": "Added: {name}",
   "\u4EE3\u7406\u5730\u5740\uFF08\u53EF\u9009\uFF09": "Proxy (optional)",
   "Claude Code \u4E0D\u4F1A\u81EA\u52A8\u8D70 VPN\u3002\u7559\u7A7A\u65F6\u63D2\u4EF6\u4F1A\u81EA\u52A8\u8BFB\u53D6\u7CFB\u7EDF\u4EE3\u7406\uFF1B\u8FDE\u4E0D\u4E0A\uFF08\u6BD4\u5982\u62A5 403\uFF09\u65F6\uFF0C\u586B\u4F60 VPN \u7684\u672C\u5730\u4EE3\u7406\u5730\u5740\uFF0C\u4F8B\u5982 http://127.0.0.1:7890\u3002": "Claude Code doesn't follow your VPN on its own. Left empty, the plugin uses the system proxy; if it can't connect (e.g. a 403), enter your VPN's local proxy address, such as http://127.0.0.1:7890.",
-  "\u81EA\u52A8": "Auto"
+  "\u81EA\u52A8": "Auto",
+  "\u5DE6\u8FB9\u6CA1\u6709\u6253\u5F00\u7684\u7B14\u8BB0\uFF0C\u8FD9\u6761\u6D88\u606F\u4E0D\u4F1A\u9644\u5E26\u7B14\u8BB0\u3002": "No note is open on the left, so this message goes without one.",
+  "\u9644\u5E26\uFF1A{name}": "Including: {name}"
 };
 
 // src/i18n.ts
@@ -2798,6 +2800,9 @@ var AIChatView = class extends import_obsidian7.ItemView {
     this.contentEl.addClass("cld-ai");
     this.render();
     void this.checkProviders();
+    this.registerEvent(this.app.workspace.on("active-leaf-change", () => this.updateAttachLabel()));
+    this.registerEvent(this.app.workspace.on("file-open", () => this.updateAttachLabel()));
+    this.registerInterval(window.setInterval(() => this.updateAttachLabel(), 1500));
   }
   async onClose() {
     this.run?.stop();
@@ -2841,11 +2846,12 @@ var AIChatView = class extends import_obsidian7.ItemView {
     const tools = composer.createDiv({ cls: "cld-ai-composer-tools" });
     const attach = tools.createEl("button", { cls: "cld-ai-chip" });
     (0, import_obsidian7.setIcon)(attach.createSpan(), "paperclip");
-    attach.createSpan({ text: t("\u9644\u5E26\u5F53\u524D\u7B14\u8BB0") });
+    attach.createSpan({ cls: "cld-ai-chip-label", text: t("\u9644\u5E26\u5F53\u524D\u7B14\u8BB0") });
     attach.toggleClass("is-active", this.attachNote);
     attach.addEventListener("click", async () => {
       this.attachNote = !this.attachNote;
       attach.toggleClass("is-active", this.attachNote);
+      this.updateAttachLabel();
       this.plugin.settings.aiAttachActiveNote = this.attachNote;
       await this.plugin.saveSettings(false);
     });
@@ -2864,10 +2870,37 @@ var AIChatView = class extends import_obsidian7.ItemView {
     });
     this.sendBtn = row.createEl("button", { cls: "cld-ai-send mod-cta" });
     this.updateSendButton();
+    this.updateAttachLabel();
     this.sendBtn.addEventListener("click", () => {
       if (this.run) this.run.stop();
       else void this.send();
     });
+  }
+  /**
+   * The note the user is looking at in the main area: an open Markdown tab, or the
+   * note open in the dashboard's reader. Focus sits in this sidebar while typing,
+   * so look at the most recent main-area leaf rather than the active one.
+   */
+  currentNote() {
+    const workspace = this.app.workspace;
+    const leaf = workspace.getMostRecentLeaf(workspace.rootSplit);
+    const view = leaf?.view;
+    let file = null;
+    if (view?.currentNoteFile) file = view.currentNoteFile();
+    else if (view?.file instanceof import_obsidian7.TFile) file = view.file;
+    if (!file) {
+      const active = workspace.getActiveFile();
+      if (active) file = active;
+    }
+    if (!file || file.extension !== "md") return null;
+    if (file.path.startsWith((0, import_obsidian7.normalizePath)(this.plugin.settings.aiChatFolder) + "/")) return null;
+    return file;
+  }
+  updateAttachLabel() {
+    const label = this.contentEl.querySelector(".cld-ai-chip .cld-ai-chip-label");
+    if (!label) return;
+    const note = this.attachNote ? this.currentNote() : null;
+    label.textContent = note ? t("\u9644\u5E26\uFF1A{name}", { name: note.basename }) : t("\u9644\u5E26\u5F53\u524D\u7B14\u8BB0");
   }
   iconButton(parent, icon, label, onClick) {
     const button = parent.createEl("button", { cls: "cld-ai-icon clickable-icon", attr: { "aria-label": label } });
@@ -3042,15 +3075,17 @@ var AIChatView = class extends import_obsidian7.ItemView {
     const history = conversation.messages.slice();
     let prompt = text;
     if (this.attachNote) {
-      const active = this.app.workspace.getActiveFile();
-      if (active && active.extension === "md" && !active.path.startsWith((0, import_obsidian7.normalizePath)(this.plugin.settings.aiChatFolder) + "/")) {
-        const content = await this.app.vault.cachedRead(active);
+      const note = this.currentNote();
+      if (note) {
+        const content = await this.app.vault.cachedRead(note);
         prompt = `${text}
 
 ---
-${t("\u5F53\u524D\u7B14\u8BB0")}\uFF1A${active.path}
+${t("\u5F53\u524D\u7B14\u8BB0")}\uFF1A${note.path}
 
 ${content.slice(0, 3e4)}`;
+      } else {
+        new import_obsidian7.Notice(t("\u5DE6\u8FB9\u6CA1\u6709\u6253\u5F00\u7684\u7B14\u8BB0\uFF0C\u8FD9\u6761\u6D88\u606F\u4E0D\u4F1A\u9644\u5E26\u7B14\u8BB0\u3002"));
       }
     }
     const userMessage = { role: "user", text, time: Date.now() };
@@ -3224,6 +3259,10 @@ var ContentLibraryView = class _ContentLibraryView extends import_obsidian8.Item
   }
   activeSourceId = "today";
   selected = null;
+  /** The note open in the dashboard's reader, for the AI chat's "include current note". */
+  currentNoteFile() {
+    return this.detailOpen && this.selected ? this.selected.file : null;
+  }
   detailOpen = false;
   audio = null;
   ambientUnsubscribe = null;

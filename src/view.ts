@@ -48,6 +48,11 @@ type CommandHost = { commands?: { executeCommandById(id: string): boolean } };
 export class ContentLibraryView extends ItemView {
   private activeSourceId = "today";
   private selected: ContentItem | null = null;
+
+  /** The note open in the dashboard's reader, for the AI chat's "include current note". */
+  currentNoteFile(): TFile | null {
+    return this.detailOpen && this.selected ? this.selected.file : null;
+  }
   private detailOpen = false;
   private audio: HTMLAudioElement | null = null;
   private ambientUnsubscribe: (() => void) | null = null;

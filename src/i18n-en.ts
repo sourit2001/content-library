@@ -479,4 +479,6 @@ export const EN: Record<string, string> = {
   "代理地址（可选）": "Proxy (optional)",
   "Claude Code 不会自动走 VPN。留空时插件会自动读取系统代理；连不上（比如报 403）时，填你 VPN 的本地代理地址，例如 http://127.0.0.1:7890。": "Claude Code doesn't follow your VPN on its own. Left empty, the plugin uses the system proxy; if it can't connect (e.g. a 403), enter your VPN's local proxy address, such as http://127.0.0.1:7890.",
   "自动": "Auto",
+  "左边没有打开的笔记，这条消息不会附带笔记。": "No note is open on the left, so this message goes without one.",
+  "附带：{name}": "Including: {name}",
 };

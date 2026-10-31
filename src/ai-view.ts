@@ -71,6 +71,10 @@ export class AIChatView extends ItemView {
     this.contentEl.addClass("cld-ai");
     this.render();
     void this.checkProviders();
+    // Keep the "include note" chip showing which note will be sent.
+    this.registerEvent(this.app.workspace.on("active-leaf-change", () => this.updateAttachLabel()));
+    this.registerEvent(this.app.workspace.on("file-open", () => this.updateAttachLabel()));
+    this.registerInterval(window.setInterval(() => this.updateAttachLabel(), 1500));
   }
 
   override async onClose(): Promise<void> {
@@ -122,11 +126,12 @@ export class AIChatView extends ItemView {
     const tools = composer.createDiv({ cls: "cld-ai-composer-tools" });
     const attach = tools.createEl("button", { cls: "cld-ai-chip" });
     setIcon(attach.createSpan(), "paperclip");
-    attach.createSpan({ text: t("附带当前笔记") });
+    attach.createSpan({ cls: "cld-ai-chip-label", text: t("附带当前笔记") });
     attach.toggleClass("is-active", this.attachNote);
     attach.addEventListener("click", async () => {
       this.attachNote = !this.attachNote;
       attach.toggleClass("is-active", this.attachNote);
+      this.updateAttachLabel();
       this.plugin.settings.aiAttachActiveNote = this.attachNote;
       await this.plugin.saveSettings(false);
     });
@@ -146,10 +151,39 @@ export class AIChatView extends ItemView {
     });
     this.sendBtn = row.createEl("button", { cls: "cld-ai-send mod-cta" });
     this.updateSendButton();
+    this.updateAttachLabel();
     this.sendBtn.addEventListener("click", () => {
       if (this.run) this.run.stop();
       else void this.send();
     });
+  }
+
+  /**
+   * The note the user is looking at in the main area: an open Markdown tab, or the
+   * note open in the dashboard's reader. Focus sits in this sidebar while typing,
+   * so look at the most recent main-area leaf rather than the active one.
+   */
+  private currentNote(): TFile | null {
+    const workspace = this.app.workspace;
+    const leaf = workspace.getMostRecentLeaf(workspace.rootSplit);
+    const view = leaf?.view as { file?: unknown; currentNoteFile?: () => TFile | null } | undefined;
+    let file: TFile | null = null;
+    if (view?.currentNoteFile) file = view.currentNoteFile();
+    else if (view?.file instanceof TFile) file = view.file;
+    if (!file) {
+      const active = workspace.getActiveFile();
+      if (active) file = active;
+    }
+    if (!file || file.extension !== "md") return null;
+    if (file.path.startsWith(normalizePath(this.plugin.settings.aiChatFolder) + "/")) return null;
+    return file;
+  }
+
+  private updateAttachLabel(): void {
+    const label = this.contentEl.querySelector(".cld-ai-chip .cld-ai-chip-label");
+    if (!label) return;
+    const note = this.attachNote ? this.currentNote() : null;
+    label.textContent = note ? t("附带：{name}", { name: note.basename }) : t("附带当前笔记");
   }
 
   private iconButton(parent: HTMLElement, icon: string, label: string, onClick: () => void): HTMLElement {
@@ -343,10 +377,12 @@ export class AIChatView extends ItemView {
     const history = conversation.messages.slice();
     let prompt = text;
     if (this.attachNote) {
-      const active = this.app.workspace.getActiveFile();
-      if (active && active.extension === "md" && !active.path.startsWith(normalizePath(this.plugin.settings.aiChatFolder) + "/")) {
-        const content = await this.app.vault.cachedRead(active);
-        prompt = `${text}\n\n---\n${t("当前笔记")}：${active.path}\n\n${content.slice(0, 30000)}`;
+      const note = this.currentNote();
+      if (note) {
+        const content = await this.app.vault.cachedRead(note);
+        prompt = `${text}\n\n---\n${t("当前笔记")}：${note.path}\n\n${content.slice(0, 30000)}`;
+      } else {
+        new Notice(t("左边没有打开的笔记，这条消息不会附带笔记。"));
       }
     }
     const userMessage: AIMessage = { role: "user", text, time: Date.now() };
