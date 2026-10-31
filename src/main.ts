@@ -9,6 +9,7 @@ import {
 import { VaultContentIndexer } from "./indexer";
 import { NOTE_SUFFIXES, dateLocale, noteSuffix, setLanguage, sourceLabel, t, timeLabel } from "./i18n";
 import { AmbientPlayer } from "./ambient";
+import { parseYouTubeUrl } from "./youtube";
 import { ThemePackManager, ThemePackStoreModal, sanitizePack, type ThemePack } from "./packs";
 import { ContentLibrarySettingsTab } from "./settings";
 import { SupportModal } from "./support";
@@ -36,6 +37,18 @@ type SettingsHost = { setting?: { open(): void; openTabById(id: string): void } 
 export type MusicTrack = MusicTrackSnapshot;
 
 export interface NetEasePlaylist extends MusicCollectionSnapshot { tracks: MusicTrack[] }
+
+type NetEaseSongPayload = { id?: number; name?: string; dt?: number; ar?: Array<{ name?: string }>; al?: { name?: string; picUrl?: string }; noCopyrightRcmd?: unknown };
+/** st < 0: taken down / no copyright; pl 0: no playable quality for a guest (VIP or paid). */
+type NetEasePrivilege = { id?: number; st?: number; pl?: number; fee?: number };
+
+function netEaseSongPlayable(song: NetEaseSongPayload, privilege: NetEasePrivilege | undefined): boolean | undefined {
+  if (song.noCopyrightRcmd) return false;
+  if (!privilege) return undefined;
+  if (typeof privilege.st === "number" && privilege.st < 0) return false;
+  if (typeof privilege.pl === "number" && privilege.pl <= 0) return false;
+  return true;
+}
 
 export default class ContentLibraryDashboardPlugin extends Plugin {
   override settings: DashboardSettings = { ...DEFAULT_SETTINGS };
@@ -243,6 +256,7 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
           name?: string;
           description?: string;
           coverUrl?: string;
+          duration?: number;
           radio?: { name?: string; picUrl?: string };
           dj?: { nickname?: string };
         }> };
@@ -262,6 +276,7 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
             album: program.description || "",
             cover: program.coverUrl || radio?.picUrl || "",
             url: program.id ? `https://music.163.com/#/program?id=${program.id}` : "",
+            duration: Number(program.duration || 0) || undefined,
           })),
           collectionType: "program" as const,
         };
@@ -275,30 +290,37 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
     const request = requestUrl({
       url: `https://music.163.com/api/v6/playlist/detail?id=${playlistId}&s=0`,
       headers: { Accept: "application/json" },
-    }).then((response) => {
+    }).then(async (response) => {
       const payload = JSON.parse(response.text) as { playlist?: {
         id?: number;
         name?: string;
         coverImgUrl?: string;
         trackCount?: number;
         creator?: { nickname?: string };
-        tracks?: Array<{ id?: number; name?: string; ar?: Array<{ name?: string }>; al?: { name?: string; picUrl?: string } }>;
-      } };
+        tracks?: NetEaseSongPayload[];
+        trackIds?: Array<{ id?: number }>;
+      }; privileges?: NetEasePrivilege[] };
       const playlist = payload.playlist;
       if (!playlist?.id || !playlist.name) return null;
+      // Without a login, NetEase only returns the first few full tracks; the rest come as ids.
+      const privileges = new Map<number, NetEasePrivilege>();
+      for (const privilege of payload.privileges || []) if (typeof privilege.id === "number") privileges.set(privilege.id, privilege);
+      const tracks = await this.completeNetEaseTracks(playlist.tracks || [], playlist.trackIds || [], privileges);
       return {
         id: String(playlist.id),
         title: playlist.name,
         cover: playlist.coverImgUrl || "",
         creator: playlist.creator?.nickname || t("网易云歌单"),
         trackCount: playlist.trackCount || playlist.tracks?.length || 0,
-        tracks: (playlist.tracks || []).map((track) => ({
+        tracks: tracks.map((track) => ({
           id: String(track.id || ""),
           title: track.name || t("未命名歌曲"),
           artist: (track.ar || []).map((artist) => artist.name).filter(Boolean).join(" / ") || t("未知歌手"),
           album: track.al?.name || "",
           cover: track.al?.picUrl || "",
           url: track.id ? `https://music.163.com/#/song?id=${track.id}` : "",
+          duration: Number(track.dt || 0) || undefined,
+          playable: netEaseSongPlayable(track, typeof track.id === "number" ? privileges.get(track.id) : undefined),
         })),
         collectionType: "playlist" as const,
       };
@@ -308,6 +330,31 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
     });
     this.playlistCache.set(cacheKey, request);
     return request;
+  }
+
+  /** Fills in the tracks NetEase only listed by id, in playlist order (up to 1000). */
+  private async completeNetEaseTracks(tracks: NetEaseSongPayload[], trackIds: Array<{ id?: number }>, privileges: Map<number, NetEasePrivilege>): Promise<NetEaseSongPayload[]> {
+    const ids = trackIds.map((entry) => entry.id).filter((id): id is number => typeof id === "number").slice(0, 1000);
+    if (ids.length <= tracks.length) return tracks;
+    const byId = new Map<number, NetEaseSongPayload>();
+    for (const track of tracks) if (typeof track.id === "number") byId.set(track.id, track);
+    const missing = ids.filter((id) => !byId.has(id));
+    for (let start = 0; start < missing.length; start += 200) {
+      const batch = missing.slice(start, start + 200);
+      try {
+        const response = await requestUrl({
+          url: `https://music.163.com/api/v3/song/detail?c=${encodeURIComponent(JSON.stringify(batch.map((id) => ({ id }))))}`,
+          headers: { Accept: "application/json", Referer: "https://music.163.com/" },
+        });
+        const payload = JSON.parse(response.text) as { songs?: NetEaseSongPayload[]; privileges?: NetEasePrivilege[] };
+        for (const song of payload.songs || []) if (typeof song.id === "number") byId.set(song.id, song);
+        for (const privilege of payload.privileges || []) if (typeof privilege.id === "number") privileges.set(privilege.id, privilege);
+      } catch (error) {
+        console.warn("[Content Library] NetEase track detail fetch failed", error);
+        break;
+      }
+    }
+    return ids.map((id) => byId.get(id)).filter((track): track is NetEaseSongPayload => Boolean(track));
   }
 
   async getQqPlaylist(url: string): Promise<NetEasePlaylist | null> {
@@ -443,6 +490,52 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
     });
     this.playlistCache.set(cacheKey, request);
     return request;
+  }
+
+  async getYouTubeCollection(url: string): Promise<NetEasePlaylist | null> {
+    const parsed = parseYouTubeUrl(url);
+    if (!parsed) return null;
+    const snapshot = this.settings.musicCollectionSnapshots[url];
+    if (snapshot) return snapshot;
+    const isPlaylist = !parsed.videoId && Boolean(parsed.listId);
+    const canonical = parsed.videoId
+      ? `https://www.youtube.com/watch?v=${parsed.videoId}`
+      : `https://www.youtube.com/playlist?list=${parsed.listId}`;
+    const fallbackCover = parsed.videoId ? `https://i.ytimg.com/vi/${parsed.videoId}/hqdefault.jpg` : "";
+    const fallbackTitle = isPlaylist ? t("YouTube 播放列表") : t("YouTube 视频");
+    let title = "";
+    let creator = "";
+    let cover = fallbackCover;
+    try {
+      const response = await requestUrl({
+        url: `https://www.youtube.com/oembed?url=${encodeURIComponent(canonical)}&format=json`,
+        headers: { Accept: "application/json" },
+      });
+      const payload = JSON.parse(response.text) as { title?: string; author_name?: string; thumbnail_url?: string };
+      title = payload.title || "";
+      creator = payload.author_name || "";
+      cover = payload.thumbnail_url || fallbackCover;
+    } catch (error) {
+      console.warn("[Content Library] YouTube metadata fetch failed", error);
+    }
+    const collection: NetEasePlaylist = {
+      id: parsed.videoId || parsed.listId,
+      title: title || fallbackTitle,
+      cover,
+      creator: creator || "YouTube",
+      trackCount: 1,
+      tracks: [{
+        id: parsed.videoId || parsed.listId,
+        title: title || fallbackTitle,
+        artist: creator || "YouTube",
+        album: "",
+        cover,
+        url: canonical,
+      }],
+      collectionType: isPlaylist ? "playlist" : "video",
+    };
+    // Only remember real metadata, so a failed lookup (e.g. no network) is retried next time.
+    return title ? this.rememberMusicCollection(url, collection) : collection;
   }
 
   async getQqMusicCollection(url: string): Promise<NetEasePlaylist | null> {
@@ -804,6 +897,31 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
     }
     const content = `---\ntitle: ${JSON.stringify(title.trim() || t("网易云歌单"))}\nplaylist_url: ${url.trim()}\n---\n`;
     return this.app.vault.create(path, content);
+  }
+
+  /** Moves a music collection note to the trash (recoverable) and forgets its cached snapshot. */
+  async deleteMusicPlaylistNote(file: TFile, url: string): Promise<void> {
+    if (url && this.settings.musicCollectionSnapshots[url]) {
+      delete this.settings.musicCollectionSnapshots[url];
+      await this.saveSettings(false);
+    }
+    await this.app.fileManager.trashFile(file);
+  }
+
+  /** Song length in ms from NetEase, or 0 when unknown. */
+  async getNetEaseSongDuration(songId: string): Promise<number> {
+    try {
+      const response = await requestUrl({
+        url: `https://music.163.com/api/song/detail/?id=${songId}&ids=%5B${songId}%5D`,
+        headers: { Accept: "application/json", Referer: "https://music.163.com/" },
+      });
+      const payload = JSON.parse(response.text) as { songs?: Array<{ duration?: number; dt?: number }> };
+      const song = payload.songs?.[0];
+      return Number(song?.duration || song?.dt || 0);
+    } catch (error) {
+      console.warn("[Content Library] NetEase song duration lookup failed", error);
+      return 0;
+    }
   }
 
   async renameMusicPlaylistNote(file: TFile, title: string): Promise<void> {

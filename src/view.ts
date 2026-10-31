@@ -24,6 +24,8 @@ import {
   type WebPreview,
 } from "./types";
 import type { NetEasePlaylist } from "./main";
+import { isYouTubeUrl, youTubeEmbedUrl } from "./youtube";
+import { netEaseEmbed } from "./netease";
 import { SOURCE_LABELS, TIME_LABELS, dateLocale, sourceLabel, t } from "./i18n";
 import { packName } from "./packs";
 
@@ -55,6 +57,15 @@ export class ContentLibraryView extends ItemView {
   private durationCache = new Map<string, string>();
   private expandedMusicPlaylists = new Set<string>();
   private musicDetailItemPath: string | null = null;
+  private youTubeDock: HTMLElement | null = null;
+  private youTubeDockPosition: { left: number; top: number } | null = null;
+  private youTubeDockMinimized = false;
+  private youTubeDockLarge = false;
+  private musicQueue: Array<{ title: string; url: string; duration?: number }> = [];
+  private musicQueueIndex = -1;
+  private musicQueueTimer: number | null = null;
+  private musicQueueToken = 0;
+  private dockFrame: HTMLIFrameElement | null = null;
   private inspirationOffset = 0;
   private inspirationHourKey = "";
   private readingScrollCleanup: (() => void) | null = null;
@@ -91,6 +102,7 @@ export class ContentLibraryView extends ItemView {
       }
     }, 60_000));
     this.registerInterval(window.setInterval(() => this.updateTodayClock(), 1_000));
+    this.registerDomEvent(window, "message", (event: MessageEvent) => this.onPlayerMessage(event));
     this.registerInterval(window.setInterval(() => {
       if (this.app.workspace.getActiveViewOfType(ContentLibraryView)?.leaf !== this.leaf || this.detailOpen || this.activeSourceId !== "today") return;
       const hour = this.currentInspirationHour();
@@ -105,6 +117,8 @@ export class ContentLibraryView extends ItemView {
   override async onClose(): Promise<void> {
     this.readingScrollCleanup?.();
     this.destroyAudio();
+    this.stopMusicQueue();
+    this.closeYouTubeDock();
     this.ambientUnsubscribe?.();
     this.ambientUnsubscribe = null;
     // Ambience belongs to the dashboard: stop it when the last dashboard closes.
@@ -497,16 +511,21 @@ export class ContentLibraryView extends ItemView {
     const sectionHead = main.createDiv({ cls: "cld-section-head cld-music-section-head" });
     const heading = sectionHead.createDiv();
     heading.createEl("strong", { text: t("音乐收藏") });
-    heading.createEl("p", { text: t("歌单内容来自网易云，点击歌曲后在官方页面播放") });
+    heading.createEl("p", { text: t("支持网易云、QQ 音乐和 YouTube 链接；网易云和 YouTube 可以直接在这里播放") });
     const actions = sectionHead.createDiv({ cls: "cld-music-section-actions" });
     actions.createEl("small", { text: t("{count} 个歌单", { count: playlists.length }) });
+    if (playlists.length) {
+      const playAll = actions.createEl("button", { cls: "cld-text-button mod-cta", text: t("▶ 顺序循环播放"), attr: { type: "button", title: t("从上到下依次播放收藏，播完回到第一个") } });
+      playAll.addEventListener("click", () => void this.startCollectionQueue(playlists));
+    }
     const add = actions.createEl("button", { cls: "cld-text-button", text: t("添加歌单"), attr: { type: "button" } });
     add.addEventListener("click", () => {
       const source = this.activeSource();
       if (!source) return;
       new MusicPlaylistModal(this.app, source.name, async (url, customTitle) => {
-        const playlist = await this.plugin.getNetEasePlaylist(url);
-        const file = await this.plugin.createMusicPlaylistNote(source, url, customTitle || playlist?.title || (isQqMusicUrl(url) ? t("QQ音乐歌单") : t("网易云歌单")));
+        const playlist = await this.loadMusicCollection(url);
+        const fallbackName = isYouTubeUrl(url) ? t("YouTube 视频") : isQqMusicUrl(url) ? t("QQ音乐歌单") : t("网易云歌单");
+        const file = await this.plugin.createMusicPlaylistNote(source, url, customTitle || playlist?.title || fallbackName);
         new Notice(t("已添加歌单：{name}", { name: file.basename }));
         await this.refresh();
       }).open();
@@ -519,14 +538,14 @@ export class ContentLibraryView extends ItemView {
     }
     const detailItem = playlists.find((item) => item.file.path === this.musicDetailItemPath);
     if (detailItem) {
-      const playlist = isQqMusicUrl(detailItem.playlistUrl) ? await this.plugin.getQqMusicCollection(detailItem.playlistUrl) : await this.plugin.getNetEasePlaylist(detailItem.playlistUrl);
+      const playlist = await this.loadMusicCollection(detailItem.playlistUrl);
       const preview = playlist?.cover ? null : await this.plugin.getWebPreview(detailItem.playlistUrl);
       await this.renderMusicPlaylist(main, detailItem, playlist, preview);
       return;
     }
     const grid = main.createDiv({ cls: "cld-music-card-grid" });
     for (const item of playlists) {
-      const playlist = isQqMusicUrl(item.playlistUrl) ? await this.plugin.getQqMusicCollection(item.playlistUrl) : await this.plugin.getNetEasePlaylist(item.playlistUrl);
+      const playlist = await this.loadMusicCollection(item.playlistUrl);
       const preview = playlist?.cover ? null : await this.plugin.getWebPreview(item.playlistUrl);
       this.renderMusicPlaylistCard(grid, item, playlist, preview);
     }
@@ -542,14 +561,21 @@ export class ContentLibraryView extends ItemView {
       cover.createEl("small", { text: t("音乐") });
     }
     const copy = card.createDiv({ cls: "cld-music-card-copy" });
-    const platform = isQqMusicUrl(item.playlistUrl) ? t("QQ音乐") : t("网易云音乐");
-    const contentType = playlist?.collectionType === "song" ? t("单曲") : playlist?.collectionType === "album" ? t("专辑") : isNetEaseProgramUrl(item.playlistUrl) ? t("节目") : t("歌单");
+    const platform = musicPlatformLabel(item.playlistUrl);
+    const contentType = playlist?.collectionType === "video" ? t("视频") : playlist?.collectionType === "song" ? t("单曲") : playlist?.collectionType === "album" ? t("专辑") : isNetEaseProgramUrl(item.playlistUrl) ? t("节目") : t("歌单");
     copy.createEl("small", { text: `${platform} · ${contentType}` });
     copy.createEl("h3", { text: item.title });
     copy.createEl("p", { text: playlist ? t("{count} 条内容 · 点击查看", { count: playlist.trackCount }) : t("点击查看详情") });
     card.addEventListener("click", () => {
       this.musicDetailItemPath = item.file.path;
       void this.refresh();
+    });
+    card.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      const menu = new Menu();
+      menu.addItem((menuItem) => menuItem.setTitle(t("编辑名称")).setIcon("pencil").onClick(() => this.openMusicPlaylistNameEditor(item)));
+      menu.addItem((menuItem) => menuItem.setTitle(t("删除")).setIcon("trash-2").onClick(() => this.confirmDeleteMusicItem(item)));
+      menu.showAtMouseEvent(event);
     });
   }
 
@@ -583,8 +609,8 @@ export class ContentLibraryView extends ItemView {
       cover.click();
     });
     const copy = head.createDiv({ cls: "cld-music-playlist-copy" });
-    const platform = isQqMusicUrl(item.playlistUrl) ? t("QQ音乐") : t("网易云音乐");
-    const contentType = playlist?.collectionType === "song" ? t("单曲") : playlist?.collectionType === "album" ? t("专辑") : isNetEaseProgramUrl(item.playlistUrl) ? t("节目") : t("歌单");
+    const platform = musicPlatformLabel(item.playlistUrl);
+    const contentType = playlist?.collectionType === "video" ? t("视频") : playlist?.collectionType === "song" ? t("单曲") : playlist?.collectionType === "album" ? t("专辑") : isNetEaseProgramUrl(item.playlistUrl) ? t("节目") : t("歌单");
     copy.createEl("small", { text: `${platform} · ${contentType}` });
     const title = copy.createEl("h3", { text: item.title, attr: { title: t("点击编辑名称") } });
     title.addEventListener("click", () => this.openMusicPlaylistNameEditor(item));
@@ -600,11 +626,55 @@ export class ContentLibraryView extends ItemView {
       event.stopPropagation();
       this.openMusicPlaylistNameEditor(item);
     });
+    const remove = actions.createEl("button", { cls: "cld-text-button mod-warning", text: t("删除"), attr: { type: "button" } });
+    remove.addEventListener("click", (event) => {
+      event.stopPropagation();
+      this.confirmDeleteMusicItem(item);
+    });
+    const isNetEase = !isQqMusicUrl(item.playlistUrl) && !isYouTubeUrl(item.playlistUrl);
+    const listEmbed = isNetEase ? netEaseEmbed(item.playlistUrl) : null;
+    const queueTracks = isNetEase && playlist?.tracks.length
+      ? playlist.tracks.filter((track) => track.playable !== false && Boolean(netEaseEmbed(track.url))).map((track) => ({ title: track.title, url: track.url, duration: track.duration }))
+      : [];
+    if (queueTracks.length || listEmbed) {
+      const playAll = actions.createEl("button", { cls: "cld-text-button mod-cta", text: t("▶ 循环播放"), attr: { type: "button", title: t("从第一首开始依次播放，播完回到开头") } });
+      playAll.addEventListener("click", (event) => {
+        event.stopPropagation();
+        if (queueTracks.length) {
+          this.startMusicQueue(queueTracks);
+          return;
+        }
+        this.stopMusicQueue();
+        if (listEmbed) this.openPlayerDock(item.title, listEmbed.src, item.playlistUrl, listEmbed.height);
+      });
+    }
+    if (isYouTubeUrl(item.playlistUrl)) {
+      const play = actions.createEl("button", { cls: "cld-text-button mod-cta", text: t("在这里播放"), attr: { type: "button" } });
+      play.addEventListener("click", (event) => {
+        event.stopPropagation();
+        this.openYouTubeDock(item.title, item.playlistUrl);
+      });
+      const browser = actions.createEl("button", { cls: "cld-text-button", text: t("浏览器打开 ↗"), attr: { type: "button" } });
+      browser.addEventListener("click", (event) => {
+        event.stopPropagation();
+        void openExternalUrl(item.playlistUrl);
+      });
+      card.createEl("small", { cls: "cld-music-track-more", text: youTubeEmbedUrl(item.playlistUrl)
+        ? t("播放器会停靠在面板右下角，切换页面也不会停。单个视频会自动循环。")
+        : t("这是 YouTube 自动生成的合辑，无法嵌入播放。请粘贴单个视频或自建播放列表（list=PL...）的链接。") });
+      return;
+    }
     if (!playlist?.tracks.length) {
       card.createEl("small", { cls: "cld-music-track-more", text: isQqMusicUrl(item.playlistUrl) ? t("QQ 音乐歌单的歌曲列表暂未同步，点击上方按钮在 App 中查看。") : t("这个链接没有可同步的歌曲列表，请确认它是 music.163.com/playlist?id=... 歌单链接。") });
       return;
     }
-    const visibleTracks = expanded ? playlist.tracks : playlist.tracks.slice(0, 30);
+    if (queueTracks.length) {
+      const blocked = playlist.tracks.filter((track) => track.playable === false).length;
+      card.createEl("small", { cls: "cld-music-track-more", text: blocked
+        ? t("点歌曲直接在这里播放。有 {count} 首因版权或 VIP 限制不能在这里播（灰色），循环播放时会自动跳过，可点“仅 App ↗”在 App 里听。", { count: blocked })
+        : t("点歌曲直接在这里播放。部分歌曲因版权限制无法外链播放，可点右侧“App ↗”在 App 里听。") });
+    }
+    const visibleTracks = expanded ? playlist.tracks : playlist.tracks.slice(0, 500);
     const list = card.createDiv({ cls: "cld-music-track-list", attr: { role: "list" } });
     for (const [index, track] of visibleTracks.entries()) {
       const row = list.createEl("button", { cls: "cld-music-track", attr: { type: "button", role: "listitem" } });
@@ -615,12 +685,35 @@ export class ContentLibraryView extends ItemView {
       const trackCopy = row.createSpan({ cls: "cld-music-track-copy" });
       trackCopy.createEl("strong", { text: track.title });
       trackCopy.createEl("small", { text: `${track.artist}${track.album ? ` · ${track.album}` : ""}` });
-      row.createSpan({ cls: "cld-music-track-open", text: t("App 播放 ↗") });
-      row.addEventListener("click", () => openMusicApp(track.url || item.playlistUrl));
+      const blockedTrack = track.playable === false;
+      if (blockedTrack) row.addClass("is-unavailable");
+      const trackEmbed = isQqMusicUrl(item.playlistUrl) || blockedTrack ? null : netEaseEmbed(track.url);
+      const appLink = row.createSpan({ cls: "cld-music-track-open", text: trackEmbed ? t("App ↗") : blockedTrack ? t("仅 App ↗") : t("App 播放 ↗") });
+      if (blockedTrack) row.setAttribute("title", t("这首因版权或 VIP 限制只能在网易云 App 里听"));
+      if (trackEmbed) {
+        row.setAttribute("title", t("点击在这里播放"));
+        appLink.addClass("is-link");
+        appLink.setAttribute("title", t("在 App 中打开"));
+        appLink.addEventListener("click", (event) => {
+          event.stopPropagation();
+          void openMusicApp(track.url || item.playlistUrl);
+        });
+        // Start from this track and keep going down the list.
+        row.addEventListener("click", () => {
+          const startAt = queueTracks.findIndex((entry) => entry.url === track.url);
+          if (startAt >= 0) this.startMusicQueue(queueTracks, startAt);
+          else {
+            this.stopMusicQueue();
+            this.openPlayerDock(track.title, trackEmbed.src, track.url, trackEmbed.height);
+          }
+        });
+      } else {
+        row.addEventListener("click", () => openMusicApp(track.url || item.playlistUrl));
+      }
     }
     const count = card.createDiv({ cls: "cld-music-track-count" });
     count.createEl("small", { text: t("已显示 {shown} / 共 {total} 条", { shown: visibleTracks.length, total: playlist.trackCount }) });
-    if (playlist.tracks.length > 30) {
+    if (playlist.tracks.length > 500) {
       const toggle = count.createEl("button", { cls: "cld-text-button", text: expanded ? t("收起") : t("显示全部（{count} 条）", { count: playlist.tracks.length }), attr: { type: "button" } });
       toggle.addEventListener("click", () => {
         if (expanded) this.expandedMusicPlaylists.delete(item.file.path);
@@ -629,6 +722,261 @@ export class ContentLibraryView extends ItemView {
       });
     }
     if (playlist.tracks.length < playlist.trackCount) card.createEl("small", { cls: "cld-music-track-more", text: t("已同步 {count} 条，完整列表请在平台 App 查看", { count: playlist.tracks.length }) });
+  }
+
+  private loadMusicCollection(url: string): Promise<NetEasePlaylist | null> {
+    if (isYouTubeUrl(url)) return this.plugin.getYouTubeCollection(url);
+    if (isQqMusicUrl(url)) return this.plugin.getQqMusicCollection(url);
+    return this.plugin.getNetEasePlaylist(url);
+  }
+
+  /**
+   * The YouTube player lives outside contentEl, so dashboard re-renders
+   * (which empty contentEl) never reload it and the music keeps playing.
+   */
+  private openYouTubeDock(title: string, url: string): void {
+    const src = youTubeEmbedUrl(url);
+    if (!src) {
+      new Notice(t("这个 YouTube 链接无法嵌入播放。"));
+      return;
+    }
+    this.stopMusicQueue();
+    this.openPlayerDock(title, src, url, null);
+  }
+
+  /** Whole-collection loop: NetEase playlists and podcasts expand into their tracks. */
+  private async startCollectionQueue(items: ContentItem[]): Promise<void> {
+    const entries: Array<{ title: string; url: string; duration?: number }> = [];
+    let skipped = 0;
+    for (const item of items) {
+      const url = item.playlistUrl;
+      if (isQqMusicUrl(url)) { skipped += 1; continue; }
+      if (isYouTubeUrl(url)) { entries.push({ title: item.title, url }); continue; }
+      const single = netEaseEmbed(url);
+      if (single && (single.songId || /program/i.test(url))) { entries.push({ title: item.title, url }); continue; }
+      const collection = await this.plugin.getNetEasePlaylist(url);
+      const tracks = (collection?.tracks || []).filter((track) => track.playable !== false && Boolean(netEaseEmbed(track.url)));
+      if (tracks.length) entries.push(...tracks.map((track) => ({ title: track.title, url: track.url, duration: track.duration })));
+      else if (single) entries.push({ title: item.title, url });
+      else skipped += 1;
+    }
+    if (skipped) new Notice(t("已跳过 {count} 个不能在这里播放的收藏（如 QQ 音乐）。", { count: skipped }));
+    this.startMusicQueue(entries, 0, false);
+  }
+
+  private startMusicQueue(entries: Array<{ title: string; url: string; duration?: number }>, startAt = 0, warn = true): void {
+    const playable = entries.filter((entry) => Boolean(this.queueEmbed(entry.url)));
+    if (!playable.length) {
+      new Notice(t("收藏里没有能在这里播放的内容（目前支持网易云和 YouTube）。"));
+      return;
+    }
+    if (warn && playable.length < entries.length) new Notice(t("已跳过 {count} 个不能在这里播放的收藏（如 QQ 音乐）。", { count: entries.length - playable.length }));
+    this.musicQueue = playable;
+    const startEntry = entries[startAt];
+    const index = startEntry ? playable.indexOf(startEntry) : 0;
+    this.playQueueAt(index >= 0 ? index : 0);
+  }
+
+  private queueEmbed(url: string): { src: string; height: number | null; songId: string; selfAdvances: boolean } | null {
+    if (isYouTubeUrl(url)) {
+      const src = youTubeEmbedUrl(url, true, { loop: false, api: true });
+      return src ? { src, height: null, songId: "", selfAdvances: true } : null;
+    }
+    if (isQqMusicUrl(url)) return null;
+    const embed = netEaseEmbed(url);
+    return embed ? { src: embed.src, height: embed.height, songId: embed.songId, selfAdvances: false } : null;
+  }
+
+  private playQueueAt(index: number): void {
+    if (!this.musicQueue.length) return;
+    const total = this.musicQueue.length;
+    this.musicQueueIndex = ((index % total) + total) % total;
+    const entry = this.musicQueue[this.musicQueueIndex];
+    const embed = this.queueEmbed(entry.url);
+    if (!embed) return;
+    this.clearMusicQueueTimer();
+    const token = ++this.musicQueueToken;
+    this.openPlayerDock(entry.title, embed.src, entry.url, embed.height, true);
+    // NetEase's embed has no "ended" signal, so songs and podcast episodes move on after their length.
+    const schedule = (duration: number) => {
+      if (token !== this.musicQueueToken || !duration) return;
+      this.musicQueueTimer = window.setTimeout(() => this.advanceMusicQueue(token), duration + 3_000);
+    };
+    if (entry.duration) schedule(entry.duration);
+    else if (embed.songId) void this.plugin.getNetEaseSongDuration(embed.songId).then(schedule);
+  }
+
+  private advanceMusicQueue(token = this.musicQueueToken): void {
+    if (token !== this.musicQueueToken || !this.musicQueue.length) return;
+    this.playQueueAt(this.musicQueueIndex + 1);
+  }
+
+  private clearMusicQueueTimer(): void {
+    if (this.musicQueueTimer !== null) window.clearTimeout(this.musicQueueTimer);
+    this.musicQueueTimer = null;
+  }
+
+  private stopMusicQueue(): void {
+    this.clearMusicQueueTimer();
+    this.musicQueueToken += 1;
+    this.musicQueue = [];
+    this.musicQueueIndex = -1;
+  }
+
+  /** YouTube iframe API messages: playerState 0 means the video ended. */
+  private onPlayerMessage(event: MessageEvent): void {
+    if (!this.musicQueue.length || !this.dockFrame || event.source !== this.dockFrame.contentWindow) return;
+    if (!/^https:\/\/(?:www\.)?youtube(?:-nocookie)?\.com$/i.test(event.origin)) return;
+    let data: { event?: string; info?: unknown } | null = null;
+    try {
+      data = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
+    } catch {
+      return;
+    }
+    if (!data) return;
+    const ended = (data.event === "onStateChange" && data.info === 0)
+      || (data.event === "infoDelivery" && (data.info as { playerState?: number } | null)?.playerState === 0);
+    if (ended) {
+      const token = this.musicQueueToken;
+      window.setTimeout(() => this.advanceMusicQueue(token), 800);
+    }
+  }
+
+  private confirmDeleteMusicItem(item: ContentItem): void {
+    new ConfirmDeleteModal(this.app, item.title, async () => {
+      await this.plugin.deleteMusicPlaylistNote(item.file, item.playlistUrl);
+      if (this.musicDetailItemPath === item.file.path) this.musicDetailItemPath = null;
+      this.musicQueue = this.musicQueue.filter((entry) => entry.url !== item.playlistUrl);
+      new Notice(t("已删除：{name}（可在废纸篓恢复）", { name: item.title }));
+      await this.refresh();
+    }).open();
+  }
+
+  /** Floating player shared by YouTube and NetEase. frameHeight null = 16:9 video. */
+  private openPlayerDock(title: string, src: string, externalUrl: string, frameHeight: number | null, queued = false): void {
+    this.closeYouTubeDock();
+    this.containerEl.addClass("cld-has-yt-dock");
+    const dock = this.containerEl.createDiv({ cls: "cld-yt-dock" });
+    const bar = dock.createDiv({ cls: "cld-yt-dock-bar", attr: { title: t("拖动可以移动播放器") } });
+    setIcon(bar.createSpan({ cls: "cld-yt-dock-grip" }), "grip-vertical");
+    const inQueue = queued && this.musicQueue.length > 1;
+    bar.createSpan({ cls: "cld-yt-dock-title", text: inQueue ? `${this.musicQueueIndex + 1}/${this.musicQueue.length} · ${title}` : title });
+    if (inQueue) {
+      const prev = bar.createEl("button", { cls: "cld-icon-button", attr: { type: "button", "aria-label": t("上一个") } });
+      setIcon(prev, "skip-back");
+      prev.addEventListener("click", () => this.playQueueAt(this.musicQueueIndex - 1));
+      const next = bar.createEl("button", { cls: "cld-icon-button", attr: { type: "button", "aria-label": t("下一个") } });
+      setIcon(next, "skip-forward");
+      next.addEventListener("click", () => this.playQueueAt(this.musicQueueIndex + 1));
+    }
+    const size = bar.createEl("button", { cls: "cld-icon-button", attr: { type: "button" } });
+    const minimize = bar.createEl("button", { cls: "cld-icon-button", attr: { type: "button" } });
+    const open = bar.createEl("button", { cls: "cld-icon-button", attr: { type: "button", "aria-label": t("浏览器打开 ↗") } });
+    setIcon(open, "external-link");
+    open.addEventListener("click", () => void openExternalUrl(externalUrl));
+    const close = bar.createEl("button", { cls: "cld-icon-button", attr: { type: "button", "aria-label": t("关闭播放器") } });
+    setIcon(close, "x");
+    close.addEventListener("click", () => {
+      this.stopMusicQueue();
+      this.closeYouTubeDock();
+    });
+    const frame = dock.createEl("iframe", {
+      cls: "cld-yt-dock-frame",
+      attr: {
+        src,
+        title,
+        allow: "autoplay; encrypted-media; picture-in-picture",
+        referrerpolicy: "strict-origin-when-cross-origin",
+        allowfullscreen: "true",
+      },
+    });
+    frame.setAttribute("frameborder", "0");
+    this.dockFrame = frame;
+    if (queued && !frameHeight) {
+      // Ask the YouTube player to report state changes back to us.
+      frame.addEventListener("load", () => {
+        const target = frame.contentWindow;
+        if (!target) return;
+        target.postMessage(JSON.stringify({ event: "listening", id: 1, channel: "widget" }), "*");
+        target.postMessage(JSON.stringify({ event: "command", func: "addEventListener", args: ["onStateChange"], id: 1, channel: "widget" }), "*");
+      });
+    }
+    if (frameHeight) {
+      dock.addClass("is-fixed-height");
+      dock.style.setProperty("--cld-dock-frame-height", `${frameHeight}px`);
+    }
+    this.youTubeDock = dock;
+
+    const applyState = () => {
+      dock.toggleClass("is-minimized", this.youTubeDockMinimized);
+      dock.toggleClass("is-large", this.youTubeDockLarge);
+      setIcon(minimize, this.youTubeDockMinimized ? "chevron-up" : "minus");
+      minimize.setAttribute("aria-label", this.youTubeDockMinimized ? t("展开播放器") : t("最小化"));
+      setIcon(size, this.youTubeDockLarge ? "minimize-2" : "maximize-2");
+      size.setAttribute("aria-label", this.youTubeDockLarge ? t("缩小") : t("放大"));
+      size.toggleClass("is-hidden", this.youTubeDockMinimized);
+      this.clampYouTubeDock();
+    };
+    // The video keeps playing while minimized: the iframe only collapses, it is never unloaded.
+    minimize.addEventListener("click", () => { this.youTubeDockMinimized = !this.youTubeDockMinimized; applyState(); });
+    size.addEventListener("click", () => { this.youTubeDockLarge = !this.youTubeDockLarge; applyState(); });
+    bar.addEventListener("dblclick", (event) => {
+      if ((event.target as HTMLElement).closest("button")) return;
+      this.youTubeDockMinimized = !this.youTubeDockMinimized;
+      applyState();
+    });
+
+    bar.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0 || (event.target as HTMLElement).closest("button")) return;
+      event.preventDefault();
+      const host = this.containerEl.getBoundingClientRect();
+      const rect = dock.getBoundingClientRect();
+      const offsetX = event.clientX - rect.left;
+      const offsetY = event.clientY - rect.top;
+      dock.addClass("is-dragging");
+      bar.setPointerCapture(event.pointerId);
+      const move = (moveEvent: PointerEvent) => {
+        this.placeYouTubeDock(moveEvent.clientX - host.left - offsetX, moveEvent.clientY - host.top - offsetY);
+      };
+      const end = () => {
+        dock.removeClass("is-dragging");
+        bar.removeEventListener("pointermove", move);
+        bar.removeEventListener("pointerup", end);
+        bar.removeEventListener("pointercancel", end);
+      };
+      bar.addEventListener("pointermove", move);
+      bar.addEventListener("pointerup", end);
+      bar.addEventListener("pointercancel", end);
+    });
+
+    if (this.youTubeDockPosition) this.placeYouTubeDock(this.youTubeDockPosition.left, this.youTubeDockPosition.top);
+    applyState();
+  }
+
+  /** Moves the dock, kept fully inside the dashboard pane. */
+  private placeYouTubeDock(left: number, top: number): void {
+    const dock = this.youTubeDock;
+    if (!dock) return;
+    const maxLeft = Math.max(0, this.containerEl.clientWidth - dock.offsetWidth);
+    const maxTop = Math.max(0, this.containerEl.clientHeight - dock.offsetHeight);
+    const x = Math.min(maxLeft, Math.max(0, left));
+    const y = Math.min(maxTop, Math.max(0, top));
+    dock.style.left = `${x}px`;
+    dock.style.top = `${y}px`;
+    dock.style.right = "auto";
+    dock.style.bottom = "auto";
+    this.youTubeDockPosition = { left: x, top: y };
+  }
+
+  private clampYouTubeDock(): void {
+    if (this.youTubeDockPosition) this.placeYouTubeDock(this.youTubeDockPosition.left, this.youTubeDockPosition.top);
+  }
+
+  private closeYouTubeDock(): void {
+    this.dockFrame = null;
+    this.youTubeDock?.remove();
+    this.youTubeDock = null;
+    this.containerEl.removeClass("cld-has-yt-dock");
   }
 
   private openMusicPlaylistNameEditor(item: ContentItem): void {
@@ -2274,6 +2622,11 @@ function isQqMusicUrl(url: string): boolean {
   return /(?:^|\/)(?:y\.qq\.com|i\.y\.qq\.com|c6\.y\.qq\.com)\//i.test(url);
 }
 
+function musicPlatformLabel(url: string): string {
+  if (isYouTubeUrl(url)) return "YouTube";
+  return isQqMusicUrl(url) ? t("QQ音乐") : t("网易云音乐");
+}
+
 function isNetEaseProgramUrl(url: string): boolean {
   return /music\.163\.com\/(?:dj|djradio)(?:[/?#]|$)/i.test(url);
 }
@@ -2416,12 +2769,12 @@ class MusicPlaylistModal extends Modal {
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass("cld-note-modal");
-    contentEl.createEl("h2", { text: t("添加网易云歌单") });
+    contentEl.createEl("h2", { text: t("添加歌单或视频") });
     contentEl.createEl("p", { text: `${t("保存到：{name}", { name: this.sourceName })} · ${t("粘贴分享链接即可")}` });
     const form = contentEl.createEl("form", { cls: "cld-note-modal-form" });
     const input = form.createEl("input", {
       cls: "cld-note-title-input",
-      attr: { type: "url", placeholder: "https://music.163.com/#/playlist?id=...", autocomplete: "off", "aria-label": t("网易云歌单链接") },
+      attr: { type: "url", placeholder: t("网易云 / QQ 音乐 / YouTube 链接"), autocomplete: "off", "aria-label": t("歌单或视频链接") },
     });
     const titleInput = form.createEl("input", {
       cls: "cld-note-title-input",
@@ -2434,8 +2787,8 @@ class MusicPlaylistModal extends Modal {
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       const url = input.value.trim();
-      if (!/^https?:\/\/(?:www\.)?(?:music\.163\.com|y\.qq\.com|i\.y\.qq\.com|c6\.y\.qq\.com)\//i.test(url)) {
-        new Notice(t("请粘贴网易云或 QQ 音乐的歌单分享链接。"));
+      if (!/^https?:\/\/(?:www\.)?(?:music\.163\.com|y\.qq\.com|i\.y\.qq\.com|c6\.y\.qq\.com)\//i.test(url) && !isYouTubeUrl(url)) {
+        new Notice(t("请粘贴网易云、QQ 音乐或 YouTube 的分享链接。"));
         input.focus();
         return;
       }
@@ -2449,6 +2802,43 @@ class MusicPlaylistModal extends Modal {
       }
     });
     window.setTimeout(() => input.focus(), 0);
+  }
+
+  override onClose(): void {
+    this.contentEl.empty();
+  }
+}
+
+class ConfirmDeleteModal extends Modal {
+  constructor(
+    app: App,
+    private itemTitle: string,
+    private onConfirm: () => Promise<void>,
+  ) {
+    super(app);
+  }
+
+  override onOpen(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass("cld-note-modal");
+    contentEl.createEl("h2", { text: t("删除“{name}”？", { name: this.itemTitle }) });
+    contentEl.createEl("p", { text: t("这条收藏的笔记会移到废纸篓，需要时可以从废纸篓恢复。") });
+    const actions = contentEl.createDiv({ cls: "cld-note-modal-actions" });
+    const cancel = actions.createEl("button", { text: t("取消"), attr: { type: "button" } });
+    const confirm = actions.createEl("button", { cls: "mod-warning", text: t("删除"), attr: { type: "button" } });
+    cancel.addEventListener("click", () => this.close());
+    confirm.addEventListener("click", async () => {
+      confirm.disabled = true;
+      try {
+        await this.onConfirm();
+        this.close();
+      } catch (error) {
+        new Notice(error instanceof Error ? t("删除失败：{message}", { message: error.message }) : t("删除失败，请重试。"));
+        confirm.disabled = false;
+      }
+    });
+    window.setTimeout(() => cancel.focus(), 0);
   }
 
   override onClose(): void {

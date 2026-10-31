@@ -1714,3 +1714,37 @@
 .cld-support-panel .cld-support-code { padding: 8px; gap: 6px; background: var(--background-primary); }
 .cld-support-panel .cld-support-code img { width: 132px; max-width: 132px; }
 @media (max-width: 480px) { .cld-support-panel-codes { width: 100%; justify-content: center; } .cld-support-panel .cld-support-code img { width: 120px; } }
+
+
+/* YouTube player docked in the dashboard (kept outside contentEl so re-renders don't stop playback) */
+.cld-has-yt-dock { position: relative; }
+.cld-yt-dock {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 30;
+  width: min(300px, calc(100% - 32px));
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.26);
+}
+.cld-yt-dock.is-large { width: min(480px, calc(100% - 32px)); }
+.cld-yt-dock.is-minimized { width: min(280px, calc(100% - 32px)); }
+.cld-yt-dock-bar { display: flex; align-items: center; gap: 2px; padding: 4px 4px 4px 6px; cursor: grab; user-select: none; touch-action: none; }
+.cld-yt-dock.is-dragging .cld-yt-dock-bar { cursor: grabbing; }
+.cld-yt-dock-grip { display: flex; color: var(--text-faint); }
+.cld-yt-dock-grip svg { width: 14px; height: 14px; }
+.cld-yt-dock-bar .cld-icon-button { cursor: pointer; }
+.cld-yt-dock-bar .cld-icon-button.is-hidden { display: none; }
+.cld-yt-dock-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--font-ui-smaller); color: var(--text-muted); }
+.cld-yt-dock-frame { display: block; width: 100%; aspect-ratio: 16 / 9; border: 0; }
+.cld-yt-dock.is-dragging .cld-yt-dock-frame { pointer-events: none; }
+/* Collapsed, not hidden: the iframe stays loaded so the music keeps playing. */
+.cld-yt-dock.is-fixed-height .cld-yt-dock-frame { aspect-ratio: auto; height: var(--cld-dock-frame-height, 86px); }
+.cld-yt-dock.is-minimized .cld-yt-dock-frame { height: 0 !important; aspect-ratio: auto; }
+.cld-music-track-open.is-link { cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+
+.cld-music-track.is-unavailable { opacity: 0.45; }
+.cld-music-track.is-unavailable:hover { opacity: 0.75; }
