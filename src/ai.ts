@@ -193,6 +193,31 @@ function loginShellEnv(): Promise<Record<string, string>> {
   return cachedShellEnv;
 }
 
+let cachedSystemProxy: Promise<string> | null = null;
+
+/** The macOS system proxy (what VPN apps set), as an http:// URL; "" when none. */
+function systemProxy(): Promise<string> {
+  if (cachedSystemProxy) return cachedSystemProxy;
+  const cp = nodeRequire<NodeChildProcess>("child_process");
+  const proc = (globalThis as unknown as { process?: { platform: string } }).process;
+  if (!cp || proc?.platform !== "darwin") return (cachedSystemProxy = Promise.resolve(""));
+  cachedSystemProxy = new Promise((resolve) => {
+    cp.execFile("/usr/sbin/scutil", ["--proxy"], { timeout: 3000 }, (_error, stdout) => {
+      const value = (key: string) => new RegExp(`\\b${key}\\s*:\\s*(\\S+)`).exec(stdout ?? "")?.[1] ?? "";
+      if (value("HTTPSEnable") === "1" && value("HTTPSProxy") && value("HTTPSPort")) {
+        resolve(`http://${value("HTTPSProxy")}:${value("HTTPSPort")}`);
+      } else if (value("HTTPEnable") === "1" && value("HTTPProxy") && value("HTTPPort")) {
+        resolve(`http://${value("HTTPProxy")}:${value("HTTPPort")}`);
+      } else if (value("SOCKSEnable") === "1" && value("SOCKSProxy") && value("SOCKSPort")) {
+        resolve(`socks5://${value("SOCKSProxy")}:${value("SOCKSPort")}`);
+      } else {
+        resolve("");
+      }
+    });
+  });
+  return cachedSystemProxy;
+}
+
 async function loginShellPath(_shell: string): Promise<string> {
   return (await loginShellEnv()).PATH ?? "";
 }
@@ -204,7 +229,20 @@ async function childEnv(): Promise<Record<string, string | undefined>> {
   const fromShell = await loginShellEnv();
   const extra: Record<string, string> = {};
   for (const [key, value] of Object.entries(fromShell)) if (SHELL_ENV_KEYS.test(key)) extra[key] = value;
-  return { ...(proc?.env ?? {}), ...extra, PATH: await searchPath(), NO_COLOR: "1", TERM: "dumb" };
+  const env: Record<string, string | undefined> = { ...(proc?.env ?? {}), ...extra, PATH: await searchPath(), NO_COLOR: "1", TERM: "dumb" };
+  // VPN apps usually set the macOS *system* proxy. Codex follows it, but Node-based CLIs
+  // (Claude Code) don't, so their requests leave without the VPN and get refused
+  // (Anthropic answers "403 Request not allowed"). Hand the system proxy to the CLI.
+  const hasProxy = Object.keys(env).some((key) => /^(https?_proxy|all_proxy)$/i.test(key) && env[key]);
+  if (!hasProxy) {
+    const proxy = await systemProxy();
+    if (proxy) {
+      env.HTTPS_PROXY = proxy;
+      env.HTTP_PROXY = proxy;
+      env.NO_PROXY = env.NO_PROXY ?? "localhost,127.0.0.1,::1";
+    }
+  }
+  return env;
 }
 
 /** Resolve the CLI binary: the user's override, else the bare name looked up on our PATH. */

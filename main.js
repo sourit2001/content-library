@@ -2294,6 +2294,28 @@ function loginShellEnv() {
   });
   return cachedShellEnv;
 }
+var cachedSystemProxy = null;
+function systemProxy() {
+  if (cachedSystemProxy) return cachedSystemProxy;
+  const cp = nodeRequire("child_process");
+  const proc = globalThis.process;
+  if (!cp || proc?.platform !== "darwin") return cachedSystemProxy = Promise.resolve("");
+  cachedSystemProxy = new Promise((resolve) => {
+    cp.execFile("/usr/sbin/scutil", ["--proxy"], { timeout: 3e3 }, (_error, stdout) => {
+      const value = (key) => new RegExp(`\\b${key}\\s*:\\s*(\\S+)`).exec(stdout ?? "")?.[1] ?? "";
+      if (value("HTTPSEnable") === "1" && value("HTTPSProxy") && value("HTTPSPort")) {
+        resolve(`http://${value("HTTPSProxy")}:${value("HTTPSPort")}`);
+      } else if (value("HTTPEnable") === "1" && value("HTTPProxy") && value("HTTPPort")) {
+        resolve(`http://${value("HTTPProxy")}:${value("HTTPPort")}`);
+      } else if (value("SOCKSEnable") === "1" && value("SOCKSProxy") && value("SOCKSPort")) {
+        resolve(`socks5://${value("SOCKSProxy")}:${value("SOCKSPort")}`);
+      } else {
+        resolve("");
+      }
+    });
+  });
+  return cachedSystemProxy;
+}
 async function loginShellPath(_shell) {
   return (await loginShellEnv()).PATH ?? "";
 }
@@ -2303,7 +2325,17 @@ async function childEnv() {
   const fromShell = await loginShellEnv();
   const extra = {};
   for (const [key, value] of Object.entries(fromShell)) if (SHELL_ENV_KEYS.test(key)) extra[key] = value;
-  return { ...proc?.env ?? {}, ...extra, PATH: await searchPath(), NO_COLOR: "1", TERM: "dumb" };
+  const env = { ...proc?.env ?? {}, ...extra, PATH: await searchPath(), NO_COLOR: "1", TERM: "dumb" };
+  const hasProxy = Object.keys(env).some((key) => /^(https?_proxy|all_proxy)$/i.test(key) && env[key]);
+  if (!hasProxy) {
+    const proxy = await systemProxy();
+    if (proxy) {
+      env.HTTPS_PROXY = proxy;
+      env.HTTP_PROXY = proxy;
+      env.NO_PROXY = env.NO_PROXY ?? "localhost,127.0.0.1,::1";
+    }
+  }
+  return env;
 }
 async function resolveBinary(name, override) {
   if (override.trim()) return override.trim();
