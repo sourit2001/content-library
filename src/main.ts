@@ -13,6 +13,7 @@ import { parseYouTubeUrl } from "./youtube";
 import { ThemePackManager, ThemePackStoreModal, sanitizePack, type ThemePack } from "./packs";
 import { ContentLibrarySettingsTab } from "./settings";
 import { SupportModal } from "./support";
+import { AIChatView, AI_CHAT_VIEW_TYPE } from "./ai-view";
 import {
   ContentLibraryView,
   CONTENT_LIBRARY_VIEW_TYPE,
@@ -70,6 +71,15 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
       CONTENT_LIBRARY_VIEW_TYPE,
       (leaf) => new ContentLibraryView(leaf, this),
     );
+    this.registerView(AI_CHAT_VIEW_TYPE, (leaf) => new AIChatView(leaf, this));
+    this.addRibbonIcon("bot-message-square", t("AI 对话"), () => {
+      void this.activateAIChat();
+    });
+    this.addCommand({
+      id: "open-ai-chat",
+      name: "Open AI chat",
+      callback: () => void this.activateAIChat(),
+    });
     this.addRibbonIcon("layout-dashboard", "Open Content Library", () => {
       void this.activateView();
     });
@@ -118,6 +128,15 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
     if (!leaf) {
       leaf = this.app.workspace.getLeaf("tab");
       await leaf.setViewState({ type: CONTENT_LIBRARY_VIEW_TYPE, active: true });
+    }
+    void this.app.workspace.revealLeaf(leaf);
+  }
+
+  async activateAIChat(): Promise<void> {
+    let leaf = this.app.workspace.getLeavesOfType(AI_CHAT_VIEW_TYPE)[0];
+    if (!leaf) {
+      leaf = this.app.workspace.getRightLeaf(false) ?? this.app.workspace.getLeaf("split");
+      await leaf.setViewState({ type: AI_CHAT_VIEW_TYPE, active: true });
     }
     void this.app.workspace.revealLeaf(leaf);
   }
@@ -177,6 +196,15 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
       playbackMode: (["sequential", "list-loop", "single-loop", "shuffle"] as const).includes(
         loaded?.playbackMode as DashboardSettings["playbackMode"],
       ) ? loaded?.playbackMode as DashboardSettings["playbackMode"] : "sequential",
+      aiProvider: (["claude", "codex", "grok", "deepseek"] as const).includes(loaded?.aiProvider as DashboardSettings["aiProvider"])
+        ? loaded?.aiProvider as DashboardSettings["aiProvider"]
+        : DEFAULT_SETTINGS.aiProvider,
+      aiChatFolder: typeof loaded?.aiChatFolder === "string" && loaded.aiChatFolder.trim() ? loaded.aiChatFolder : DEFAULT_SETTINGS.aiChatFolder,
+      aiAttachActiveNote: loaded?.aiAttachActiveNote === true,
+      aiCliPaths: loaded?.aiCliPaths && typeof loaded.aiCliPaths === "object" ? loaded.aiCliPaths : {},
+      aiCliModels: loaded?.aiCliModels && typeof loaded.aiCliModels === "object" ? loaded.aiCliModels : {},
+      deepseekApiKey: typeof loaded?.deepseekApiKey === "string" ? loaded.deepseekApiKey : "",
+      deepseekModel: typeof loaded?.deepseekModel === "string" && loaded.deepseekModel ? loaded.deepseekModel : DEFAULT_SETTINGS.deepseekModel,
     };
     // Anyone already on the glass theme keeps it after it became a premium (limited-free) theme.
     if (this.settings.theme === "glass" && !this.settings.claimedThemes.includes("glass")) this.settings.claimedThemes.push("glass");

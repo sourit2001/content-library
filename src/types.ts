@@ -75,6 +75,16 @@ export interface DashboardSettings {
   viewHistory: Record<string, number>;
   contentProgress: Record<string, ContentProgress>;
   musicCollectionSnapshots: Record<string, MusicCollectionSnapshot>;
+  /** AI chat sidebar. */
+  aiProvider: "claude" | "codex" | "grok" | "deepseek";
+  aiChatFolder: string;
+  aiAttachActiveNote: boolean;
+  /** Optional full paths to the CLIs when they aren't found automatically. */
+  aiCliPaths: Partial<Record<"claude" | "codex" | "grok", string>>;
+  /** Optional model per CLI; empty uses the CLI's own default. */
+  aiCliModels: Partial<Record<"claude" | "codex" | "grok", string>>;
+  deepseekApiKey: string;
+  deepseekModel: string;
 }
 
 export interface WebPreview {
@@ -154,4 +164,11 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
   viewHistory: {},
   contentProgress: {},
   musicCollectionSnapshots: {},
+  aiProvider: "claude",
+  aiChatFolder: "AI 对话",
+  aiAttachActiveNote: false,
+  aiCliPaths: {},
+  aiCliModels: {},
+  deepseekApiKey: "",
+  deepseekModel: "deepseek-chat",
 };

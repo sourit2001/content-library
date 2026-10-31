@@ -161,6 +161,66 @@ export class ContentLibrarySettingsTab extends PluginSettingTab {
           await this.plugin.saveSettings(false);
         }));
 
+    new Setting(containerEl).setName(t("AI 对话")).setHeading();
+    containerEl.createEl("p", {
+      cls: "setting-item-description",
+      text: t("右侧边栏的 AI 对话。Claude、Codex、Grok 调用你电脑上已登录的官方命令行工具，用的是它们自己的账号和额度，插件不会读取或保存你的登录信息。DeepSeek 需要填自己的 API Key。"),
+    });
+    new Setting(containerEl)
+      .setName(t("对话保存位置"))
+      .setDesc(t("每段对话会保存成一篇 Markdown 笔记。"))
+      .addText((text) => text
+        .setValue(this.plugin.settings.aiChatFolder)
+        .onChange(async (value) => {
+          this.plugin.settings.aiChatFolder = value.trim() || "AI 对话";
+          await this.plugin.saveSettings(false);
+        }));
+    for (const [id, label] of [["claude", "Claude Code"], ["codex", "Codex CLI"], ["grok", "Grok CLI"]] as const) {
+      new Setting(containerEl)
+        .setName(t("{name} 路径（可选）", { name: label }))
+        .setDesc(t("一般会自动找到。检测不到时填完整路径，比如在终端运行 which {cli} 得到的结果。", { cli: id }))
+        .addText((text) => text
+          .setPlaceholder(id === "claude" ? "~/.local/bin/claude" : `/opt/homebrew/bin/${id}`)
+          .setValue(this.plugin.settings.aiCliPaths[id] ?? "")
+          .onChange(async (value) => {
+            this.plugin.settings.aiCliPaths[id] = value.trim().replace(/^~(?=\/)/, (globalThis as unknown as { process?: { env: { HOME?: string } } }).process?.env.HOME ?? "~");
+            await this.plugin.saveSettings(false);
+          }));
+      new Setting(containerEl)
+        .setName(t("{name} 模型（可选）", { name: label }))
+        .setDesc(t("留空就用 {cli} 自己的默认模型。如果报错说账号不支持某个模型，在这里填一个你的套餐能用的。", { cli: id }))
+        .addText((text) => text
+          .setPlaceholder(t("默认"))
+          .setValue(this.plugin.settings.aiCliModels[id] ?? "")
+          .onChange(async (value) => {
+            this.plugin.settings.aiCliModels[id] = value.trim();
+            await this.plugin.saveSettings(false);
+          }));
+    }
+    new Setting(containerEl)
+      .setName("DeepSeek API Key")
+      .setDesc(t("在 platform.deepseek.com 创建。Key 只保存在这个库的插件设置里。"))
+      .addText((text) => {
+        text.inputEl.type = "password";
+        text.setPlaceholder("sk-...")
+          .setValue(this.plugin.settings.deepseekApiKey)
+          .onChange(async (value) => {
+            this.plugin.settings.deepseekApiKey = value.trim();
+            await this.plugin.saveSettings(false);
+          });
+      });
+    new Setting(containerEl)
+      .setName(t("DeepSeek 模型"))
+      .addDropdown((dropdown) => {
+        dropdown.addOption("deepseek-chat", t("deepseek-chat（日常对话）"));
+        dropdown.addOption("deepseek-reasoner", t("deepseek-reasoner（深度思考）"));
+        dropdown.setValue(this.plugin.settings.deepseekModel);
+        dropdown.onChange(async (value) => {
+          this.plugin.settings.deepseekModel = value;
+          await this.plugin.saveSettings(false);
+        });
+      });
+
     const sourceHeader = containerEl.createDiv({ cls: "cld-settings-heading" });
     new Setting(sourceHeader).setName(t("我的文件夹")).setHeading();
     new ButtonComponent(sourceHeader)
