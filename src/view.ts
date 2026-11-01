@@ -20,13 +20,14 @@ import {
   type ContentItem,
   type ContentSource,
   type DashboardTheme,
+  type PodcastSubscription,
   type SourceGroup,
   type WebPreview,
 } from "./types";
 import type { NetEasePlaylist } from "./main";
 import { isYouTubeUrl, youTubeEmbedUrl } from "./youtube";
 import { netEaseEmbed } from "./netease";
-import { extractPodcastUrl, podcastPlatform, spotifyEmbedUrl, timestampSeconds } from "./podcast";
+import { extractPodcastUrl, isPodcastShowLink, podcastPlatform, spotifyEmbedUrl, timestampSeconds } from "./podcast";
 import { SOURCE_LABELS, TIME_LABELS, dateLocale, sourceLabel, t } from "./i18n";
 import { packName } from "./packs";
 import { AIChatPanel } from "./ai-view";
@@ -570,25 +571,42 @@ export class ContentLibraryView extends ItemView {
     for (const item of items.slice(0, 20)) this.renderContentCard(grid, item);
   }
 
-  /** 播客收藏: episodes saved from Apple Podcasts / 小宇宙 / Spotify links. */
+  /** 播客收藏: followed shows plus episodes saved from Apple Podcasts / 小宇宙 / Spotify links. */
   private renderPodcastLinkLibrary(main: HTMLElement, source: ContentSource, items: ContentItem[]): void {
     const episodes = items.filter((item) => item.file.extension === "md");
+    const shows = this.plugin.settings.podcastSubscriptions.filter((entry) => (
+      entry.sourceId === source.id || !this.plugin.settings.sources.some((other) => other.id === entry.sourceId)
+    ));
+    // Opening the page counts as a chance to look for new episodes (throttled in the plugin).
+    if (shows.length) void this.plugin.checkPodcastSubscriptions();
     const sectionHead = main.createDiv({ cls: "cld-section-head cld-music-section-head" });
     const heading = sectionHead.createDiv();
     heading.createEl("strong", { text: t("播客收藏") });
-    heading.createEl("p", { text: t("粘贴 Apple 播客、小宇宙或 Spotify 的单集链接，在这里收听并查看 show notes") });
+    heading.createEl("p", { text: t("粘贴 Apple 播客、小宇宙或 Spotify 的单集或节目主页链接；关注的节目有更新会自动拉取") });
     const actions = sectionHead.createDiv({ cls: "cld-music-section-actions" });
     actions.createEl("small", { text: t("{count} 期", { count: episodes.length }) });
+    if (shows.length) {
+      const check = actions.createEl("button", { cls: "cld-text-button", text: t("检查更新"), attr: { type: "button" } });
+      check.addEventListener("click", () => void this.checkShows(check));
+    }
     const add = actions.createEl("button", { cls: "cld-text-button mod-cta", text: t("添加播客"), attr: { type: "button" } });
     add.addEventListener("click", () => {
-      new PodcastLinkModal(this.app, source.name, async (link) => {
+      new PodcastLinkModal(this.app, source.name, async (link, follow) => {
         const notice = new Notice(t("正在获取节目信息…"), 0);
         try {
-          const { file, episode } = await this.plugin.createPodcastEpisodeNote(source, link);
-          notice.hide();
-          if (episode.fromShowLink) new Notice(t("这是节目主页链接，已添加最新一期：{name}", { name: episode.title }), 6000);
-          else new Notice(t("已添加：{name}", { name: file.basename }));
-          if (episode.platform === "spotify" && !episode.audioUrl) new Notice(t("Spotify 不提供音频文件，这一期会用 Spotify 播放器播放。"), 6000);
+          if (follow) {
+            const result = await this.plugin.subscribePodcast(source, link);
+            notice.hide();
+            new Notice(result.added
+              ? t("已关注：{name}，最新一期已加入，以后有更新会自动拉取", { name: result.title })
+              : t("已关注：{name}", { name: result.title }), 6000);
+          } else {
+            const { file, episode } = await this.plugin.createPodcastEpisodeNote(source, link);
+            notice.hide();
+            if (episode.fromShowLink) new Notice(t("这是节目主页链接，已添加最新一期：{name}", { name: episode.title }), 6000);
+            else new Notice(t("已添加：{name}", { name: file.basename }));
+            if (episode.platform === "spotify" && !episode.audioUrl) new Notice(t("Spotify 不提供音频文件，这一期会用 Spotify 播放器播放。"), 6000);
+          }
           await this.refresh();
         } catch (error) {
           notice.hide();
@@ -596,6 +614,7 @@ export class ContentLibraryView extends ItemView {
         }
       }).open();
     });
+    if (shows.length) this.renderFollowedShows(main, shows, episodes);
     if (!episodes.length) {
       const empty = main.createDiv({ cls: "cld-empty cld-glass" });
       empty.createEl("strong", { text: t("还没有播客") });
@@ -604,6 +623,61 @@ export class ContentLibraryView extends ItemView {
     }
     const grid = main.createDiv({ cls: "cld-library-grid cld-recent-grid" });
     for (const item of episodes) this.renderContentCard(grid, item);
+  }
+
+  private renderFollowedShows(main: HTMLElement, shows: PodcastSubscription[], episodes: ContentItem[]): void {
+    const wrap = main.createDiv({ cls: "cld-followed-shows" });
+    wrap.createEl("small", { cls: "cld-followed-label", text: t("关注的节目 · {count}", { count: shows.length }) });
+    const row = wrap.createDiv({ cls: "cld-followed-row" });
+    for (const show of shows) {
+      const card = row.createDiv({ cls: "cld-followed-show cld-glass" });
+      const cover = card.createDiv({ cls: "cld-followed-cover" });
+      if (show.cover) cover.style.backgroundImage = `url("${show.cover.replace(/"/g, "%22")}")`;
+      else setIcon(cover, "podcast");
+      const copy = card.createDiv({ cls: "cld-followed-copy" });
+      copy.createEl("strong", { text: show.title });
+      const count = episodes.filter((item) => item.subtitle === show.title).length;
+      copy.createEl("small", { text: `${t("{count} 期", { count })} · ${t("{time}检查", { time: relativeTime(show.lastChecked) })}` });
+      const tools = card.createDiv({ cls: "cld-followed-tools" });
+      const check = tools.createEl("button", { cls: "cld-icon-button", attr: { type: "button", "aria-label": t("检查更新"), title: t("检查更新") } });
+      setIcon(check, "refresh-cw");
+      check.addEventListener("click", () => void this.checkShows(check, show.id));
+      const remove = tools.createEl("button", { cls: "cld-icon-button", attr: { type: "button", "aria-label": t("取消关注"), title: t("取消关注") } });
+      setIcon(remove, "user-minus");
+      remove.addEventListener("click", () => {
+        new ConfirmModal(this.app, t("取消关注“{name}”？", { name: show.title }), t("已经收藏的单集会保留，以后不再自动拉取这个节目的更新。"), t("取消关注"), async () => {
+          await this.plugin.unsubscribePodcast(show.id);
+          new Notice(t("已取消关注：{name}", { name: show.title }));
+          await this.refresh();
+        }).open();
+      });
+    }
+  }
+
+  private async checkShows(button: HTMLButtonElement, onlyId = ""): Promise<void> {
+    button.disabled = true;
+    button.addClass("is-loading");
+    try {
+      const added = await this.plugin.checkPodcastSubscriptions(true, onlyId);
+      if (!added) new Notice(t("没有新的一期"));
+    } finally {
+      button.disabled = false;
+      button.removeClass("is-loading");
+    }
+    await this.refresh();
+  }
+
+  private confirmDeletePodcastEpisode(item: ContentItem): void {
+    new ConfirmDeleteModal(this.app, item.title, async () => {
+      if (this.audioItemId === item.id || this.selected?.id === item.id) this.destroyAudio();
+      await this.plugin.deletePodcastEpisodeNote(item.file);
+      if (this.selected?.id === item.id) {
+        this.selected = null;
+        this.detailOpen = false;
+      }
+      new Notice(t("已删除：{name}（可在废纸篓恢复）", { name: item.title }));
+      await this.refresh();
+    }).open();
   }
 
   private async renderMusicLibrary(main: HTMLElement, items: ContentItem[]): Promise<void> {
@@ -1324,6 +1398,18 @@ export class ContentLibraryView extends ItemView {
       const progress = cover.createDiv({ cls: "cld-cover-progress" });
       progress.createSpan().style.width = `${item.progress}%`;
     }
+    if (item.kind === "podlink") {
+      // A span, not a button: the whole card is already a button.
+      const remove = button.createSpan({ cls: "cld-card-delete", attr: { role: "button", tabindex: "0", "aria-label": t("删除这一期"), title: t("删除这一期") } });
+      setIcon(remove, "trash-2");
+      const onRemove = (event: Event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.confirmDeletePodcastEpisode(item);
+      };
+      remove.addEventListener("click", onRemove);
+      remove.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") onRemove(event); });
+    }
     const copy = button.createDiv({ cls: "cld-card-copy" });
     if (!coverUrl) {
       const excerpt = copy.createEl("p", { cls: "cld-card-excerpt cld-card-excerpt-inline", text: this.cardExcerptFallback(item) });
@@ -1439,6 +1525,9 @@ export class ContentLibraryView extends ItemView {
       }));
     }
     menu.addItem((entry) => entry.setTitle("Open source note").setIcon("file-text").onClick(() => void this.openFile(item.file)));
+    if (item.kind === "podlink") {
+      menu.addItem((entry) => entry.setTitle(t("删除这一期")).setIcon("trash-2").onClick(() => this.confirmDeletePodcastEpisode(item)));
+    }
     if (item.externalUrl) menu.addItem((entry) => entry.setTitle("Open original link").setIcon("external-link").onClick(() => window.open(item.externalUrl, "_blank")));
     menu.addItem((entry) => entry.setTitle("Set cover path").setIcon("image-plus").onClick(() => {
       const next = window.prompt("Vault image path or https URL", this.plugin.settings.coverOverrides[item.file.path] || "");
@@ -1530,8 +1619,12 @@ export class ContentLibraryView extends ItemView {
       weave.addEventListener("click", () => this.executeCommand("weave-epub-reader:open-active-epub-reader"));
     }
     if (item.externalUrl) {
-      const original = headerActions.createEl("button", { cls: "cld-text-button", text: t("打开原始网页"), attr: { type: "button" } });
+      const original = headerActions.createEl("button", { cls: "cld-text-button", text: item.kind === "podlink" ? t("在平台中打开 ↗") : t("打开原始网页"), attr: { type: "button" } });
       original.addEventListener("click", () => window.open(item.externalUrl, "_blank"));
+    }
+    if (item.kind === "podlink") {
+      const remove = headerActions.createEl("button", { cls: "cld-text-button cld-danger-button", text: t("删除这一期"), attr: { type: "button" } });
+      remove.addEventListener("click", () => this.confirmDeletePodcastEpisode(item));
     }
     if (!this.articleReturnItem) this.renderReadingNavigation(headerActions, item);
     const article = grid.createEl("article", { cls: "cld-reading-page markdown-rendered" });
@@ -2788,6 +2881,16 @@ function openExternalUrl(url: string, _appPath = ""): Promise<void> {
   return Promise.resolve();
 }
 
+function relativeTime(time: number): string {
+  if (!time) return t("尚未");
+  const minutes = Math.round((Date.now() - time) / 60_000);
+  if (minutes < 1) return t("刚刚");
+  if (minutes < 60) return t("{count} 分钟前", { count: minutes });
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return t("{count} 小时前", { count: hours });
+  return t("{count} 天前", { count: Math.round(hours / 24) });
+}
+
 function isListening(item: ContentItem): boolean {
   return item.kind === "podcast" || item.kind === "podlink";
 }
@@ -2934,7 +3037,7 @@ class PodcastLinkModal extends Modal {
   constructor(
     app: App,
     private sourceName: string,
-    private onSubmitLink: (link: string) => Promise<void>,
+    private onSubmitLink: (link: string, follow: boolean) => Promise<void>,
   ) {
     super(app);
   }
@@ -2950,6 +3053,13 @@ class PodcastLinkModal extends Modal {
       cls: "cld-note-title-input",
       attr: { type: "text", placeholder: t("Apple 播客 / 小宇宙 / Spotify 链接"), autocomplete: "off", "aria-label": t("播客链接") },
     });
+    // Only show links can be followed; the option appears once one is pasted.
+    const followRow = form.createEl("label", { cls: "cld-follow-option" });
+    const follow = followRow.createEl("input", { attr: { type: "checkbox" } });
+    follow.checked = true;
+    followRow.createSpan({ text: t("关注这个节目，以后有新的一期自动拉取") });
+    followRow.hide();
+    input.addEventListener("input", () => followRow.toggle(isPodcastShowLink(input.value)));
     const actions = form.createDiv({ cls: "cld-note-modal-actions" });
     const cancel = actions.createEl("button", { text: t("取消"), attr: { type: "button" } });
     const create = actions.createEl("button", { cls: "mod-cta", text: t("添加"), attr: { type: "submit" } });
@@ -2965,7 +3075,7 @@ class PodcastLinkModal extends Modal {
       create.disabled = true;
       create.setText(t("获取中…"));
       try {
-        await this.onSubmitLink(link);
+        await this.onSubmitLink(link, isPodcastShowLink(link) && follow.checked);
         this.close();
       } catch (error) {
         console.warn("[Content Library] Podcast link failed", error);
@@ -3028,6 +3138,44 @@ class MusicPlaylistModal extends Modal {
       }
     });
     window.setTimeout(() => input.focus(), 0);
+  }
+
+  override onClose(): void {
+    this.contentEl.empty();
+  }
+}
+
+class ConfirmModal extends Modal {
+  constructor(
+    app: App,
+    private heading: string,
+    private message: string,
+    private confirmLabel: string,
+    private onConfirm: () => Promise<void>,
+  ) {
+    super(app);
+  }
+
+  override onOpen(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass("cld-note-modal");
+    contentEl.createEl("h2", { text: this.heading });
+    contentEl.createEl("p", { text: this.message });
+    const actions = contentEl.createDiv({ cls: "cld-note-modal-actions" });
+    const cancel = actions.createEl("button", { text: t("取消"), attr: { type: "button" } });
+    const confirm = actions.createEl("button", { cls: "mod-warning", text: this.confirmLabel, attr: { type: "button" } });
+    cancel.addEventListener("click", () => this.close());
+    confirm.addEventListener("click", async () => {
+      confirm.disabled = true;
+      try {
+        await this.onConfirm();
+        this.close();
+      } catch {
+        confirm.disabled = false;
+      }
+    });
+    window.setTimeout(() => cancel.focus(), 0);
   }
 
   override onClose(): void {

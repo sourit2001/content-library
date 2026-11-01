@@ -19,6 +19,20 @@ export interface PodcastEpisode {
   notes: string;
   /** True when a show page was pasted and its latest episode was used. */
   fromShowLink: boolean;
+  /** Stable id of the episode (guid / platform id), used to spot new episodes. */
+  key: string;
+}
+
+/** A followed show and its newest episodes (newest first). */
+export interface PodcastShow {
+  platform: PodcastPlatform;
+  url: string;
+  title: string;
+  author: string;
+  cover: string;
+  /** RSS feed when one is known; updates read it first. */
+  feedUrl: string;
+  episodes: PodcastEpisode[];
 }
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15";
@@ -40,6 +54,16 @@ export function podcastPlatform(url: string): PodcastPlatform | null {
   if (/^https?:\/\/(?:www\.)?(?:xiaoyuzhoufm\.com|xyzfm\.link|xyzfm\.space)\//i.test(url)) return "xiaoyuzhou";
   if (/^https?:\/\/open\.spotify\.com\/(?:intl-[\w-]+\/)?(?:episode|show)\//i.test(url)) return "spotify";
   return null;
+}
+
+/** Show (home page) links, as opposed to single episodes. */
+export function isPodcastShowLink(raw: string): boolean {
+  const url = extractPodcastUrl(raw);
+  const platform = podcastPlatform(url);
+  if (platform === "apple") return /\/id\d+/i.test(url) && !/[?&]i=\d+/i.test(url);
+  if (platform === "xiaoyuzhou") return /\/podcast\//i.test(url);
+  if (platform === "spotify") return /\/show\//i.test(url);
+  return false;
 }
 
 /** Official Spotify embed player for an episode or show link. */
@@ -86,6 +110,7 @@ async function resolveXiaoyuzhou(url: string): Promise<PodcastEpisode> {
     duration: Number(episode?.duration) || 0,
     notes: toMarkdown(notesHtml),
     fromShowLink: isShow,
+    key: str(episode?.eid) ? `xyz:${str(episode?.eid)}` : audioUrl || url,
   };
 }
 
@@ -142,7 +167,7 @@ async function resolveApple(url: string): Promise<PodcastEpisode> {
     const page = new DOMParser().parseFromString(await getText(url), "text/html");
     const title = metaReader(page)("og:title") || page.title;
     const item = await findFeedItem(feedUrl, "", title);
-    if (item) return { ...item, platform: "apple", url, show: item.show || show?.collectionName || "", cover: item.cover || show?.artworkUrl600 || "", fromShowLink: false };
+    if (item) return { ...item, platform: "apple", url, show: item.show || show?.collectionName || "", cover: item.cover || show?.artworkUrl600 || "", fromShowLink: false, key: item.key || url };
   }
   if (!episode) throw new Error("not-found");
   return appleEpisode(episode, url, feedUrl || episode.feedUrl || "", !episodeId, show);
@@ -170,33 +195,46 @@ async function appleEpisode(episode: ItunesResult, url: string, feedUrl: string,
     duration: Math.round((episode.trackTimeMillis || 0) / 1000),
     notes: richNotes || notes,
     fromShowLink,
+    key: episode.episodeGuid ? `guid:${episode.episodeGuid}` : `apple:${episode.trackId || episode.episodeUrl || ""}`,
   };
 }
 
-/** Reads one item from a podcast RSS feed by guid or title. */
-async function findFeedItem(feedUrl: string, guid: string, title: string): Promise<Omit<PodcastEpisode, "platform" | "url" | "fromShowLink"> | null> {
+type FeedEpisode = Omit<PodcastEpisode, "platform" | "url" | "fromShowLink">;
+
+/** Reads a podcast RSS feed: show title/cover and items in feed order (newest first in practice). */
+async function readFeed(feedUrl: string): Promise<{ title: string; author: string; cover: string; items: Array<FeedEpisode & { guid: string; link: string }> }> {
   const xml = new DOMParser().parseFromString(await getText(feedUrl, "application/rss+xml, application/xml, text/xml"), "text/xml");
-  const channelTitle = xml.querySelector("channel > title")?.textContent?.trim() || "";
-  const channelImage = xml.querySelector("channel > image > url")?.textContent?.trim() || itunesAttr(xml.querySelector("channel"), "image", "href");
-  const wanted = normalizeTitle(title);
-  const item = Array.from(xml.getElementsByTagName("item")).find((entry) => {
-    const entryGuid = entry.getElementsByTagName("guid")[0]?.textContent?.trim() || "";
-    if (guid && entryGuid === guid) return true;
-    return Boolean(wanted) && normalizeTitle(entry.getElementsByTagName("title")[0]?.textContent || "") === wanted;
+  const channel = xml.querySelector("channel");
+  const title = xml.querySelector("channel > title")?.textContent?.trim() || "";
+  const cover = xml.querySelector("channel > image > url")?.textContent?.trim() || itunesAttr(channel, "image", "href");
+  const author = channel ? itunesText(channel, "author") : "";
+  const items = Array.from(xml.getElementsByTagName("item")).map((item) => {
+    const encoded = item.getElementsByTagNameNS("http://purl.org/rss/1.0/modules/content/", "encoded")[0]?.textContent || "";
+    const description = encoded || item.getElementsByTagName("description")[0]?.textContent || itunesText(item, "summary");
+    const guid = item.getElementsByTagName("guid")[0]?.textContent?.trim() || "";
+    const audioUrl = item.getElementsByTagName("enclosure")[0]?.getAttribute("url") || "";
+    return {
+      guid,
+      link: item.getElementsByTagName("link")[0]?.textContent?.trim() || "",
+      key: guid ? `guid:${guid}` : audioUrl,
+      title: item.getElementsByTagName("title")[0]?.textContent?.trim() || "",
+      show: title,
+      cover: itunesAttr(item, "image", "href") || cover,
+      audioUrl,
+      published: day(item.getElementsByTagName("pubDate")[0]?.textContent || ""),
+      duration: parseDuration(itunesText(item, "duration")),
+      notes: toMarkdown(description),
+    };
   });
-  if (!item) return null;
-  const encoded = item.getElementsByTagNameNS("http://purl.org/rss/1.0/modules/content/", "encoded")[0]?.textContent || "";
-  const description = encoded || item.getElementsByTagName("description")[0]?.textContent || itunesText(item, "summary");
-  const durationText = itunesText(item, "duration");
-  return {
-    title: item.getElementsByTagName("title")[0]?.textContent?.trim() || title,
-    show: channelTitle,
-    cover: itunesAttr(item, "image", "href") || channelImage,
-    audioUrl: item.getElementsByTagName("enclosure")[0]?.getAttribute("url") || "",
-    published: day(item.getElementsByTagName("pubDate")[0]?.textContent || ""),
-    duration: parseDuration(durationText),
-    notes: toMarkdown(description),
-  };
+  return { title, author, cover, items };
+}
+
+/** Reads one item from a podcast RSS feed by guid or title. */
+async function findFeedItem(feedUrl: string, guid: string, title: string): Promise<FeedEpisode | null> {
+  const feed = await readFeed(feedUrl);
+  const wanted = normalizeTitle(title);
+  const item = feed.items.find((entry) => (guid && entry.guid === guid) || (Boolean(wanted) && normalizeTitle(entry.title) === wanted));
+  return item || null;
 }
 
 function itunesText(parent: Element, name: string): string {
@@ -253,6 +291,7 @@ async function resolveSpotify(url: string): Promise<PodcastEpisode> {
     duration: Number(meta("music:duration")) || 0,
     notes: plainTextToMarkdown(pageNotes),
     fromShowLink: false,
+    key: `spotify:${match[2]}`,
   };
   // Spotify does not hand out audio files; most podcasts are also on Apple's directory, which does.
   try {
@@ -286,6 +325,140 @@ async function findItunesTwin(title: string, show: string): Promise<ItunesResult
   return candidates.find((entry) => !wantedShow || normalizeTitle(entry.collectionName || "") === wantedShow)
     || (candidates.length === 1 && !wantedShow ? candidates[0] : null)
     || null;
+}
+
+// ---------- Followed shows ----------
+
+/** Looks up a show link and its newest episodes (newest first, at most `limit`). */
+export async function resolvePodcastShow(raw: string, limit = 20): Promise<PodcastShow> {
+  const url = extractPodcastUrl(raw);
+  const platform = podcastPlatform(url);
+  if (!platform) throw new Error("unsupported");
+  if (platform === "apple") return appleShow(url, limit);
+  if (platform === "xiaoyuzhou") return xiaoyuzhouShow(url, limit);
+  return spotifyShow(url, limit);
+}
+
+/** Re-reads a followed show: its RSS feed when known, otherwise the platform page. */
+export async function fetchShowEpisodes(show: Pick<PodcastShow, "platform" | "url" | "feedUrl" | "title">, limit = 20): Promise<PodcastEpisode[]> {
+  if (show.feedUrl) {
+    try {
+      return await feedShowEpisodes(show.platform, show.url, show.feedUrl, limit);
+    } catch (error) {
+      console.warn("[Content Library] Podcast feed refresh failed, trying the show page", error);
+    }
+  }
+  return (await resolvePodcastShow(show.url, limit)).episodes;
+}
+
+async function feedShowEpisodes(platform: PodcastPlatform, showUrl: string, feedUrl: string, limit: number): Promise<PodcastEpisode[]> {
+  const feed = await readFeed(feedUrl);
+  return feed.items
+    .filter((item) => item.audioUrl)
+    .sort((a, b) => Date.parse(b.published || "") - Date.parse(a.published || ""))
+    .slice(0, limit)
+    .map(({ guid: _guid, link, ...item }) => ({
+      ...item,
+      platform,
+      url: /^https?:/i.test(link) ? link : showUrl,
+      show: item.show || feed.title,
+      fromShowLink: true,
+    }));
+}
+
+async function appleShow(url: string, limit: number): Promise<PodcastShow> {
+  const showId = url.match(/\/id(\d+)/i)?.[1] || "";
+  if (!showId) throw new Error("no-id");
+  const country = url.match(/apple\.com\/([a-z]{2})\//i)?.[1]?.toLowerCase() || "";
+  const lookup = await getJson<{ results?: ItunesResult[] }>(
+    `https://itunes.apple.com/lookup?id=${showId}&entity=podcastEpisode&limit=${Math.max(limit, 10)}${country ? `&country=${country}` : ""}`,
+  );
+  const results = lookup.results || [];
+  const show = results.find((entry) => entry.kind === "podcast" || entry.wrapperType === "track");
+  if (!show) throw new Error("not-found");
+  const base = { platform: "apple" as const, url, title: show.collectionName || "", author: show.artistName || "", cover: show.artworkUrl600 || "", feedUrl: show.feedUrl || "" };
+  if (base.feedUrl) {
+    try {
+      return { ...base, episodes: await feedShowEpisodes("apple", url, base.feedUrl, limit) };
+    } catch (error) {
+      console.warn("[Content Library] Apple show feed failed, using the directory", error);
+    }
+  }
+  const episodes = results
+    .filter((entry) => entry.wrapperType === "podcastEpisode" || entry.kind === "podcast-episode")
+    .sort((a, b) => Date.parse(b.releaseDate || "") - Date.parse(a.releaseDate || ""))
+    .slice(0, limit);
+  return { ...base, episodes: await Promise.all(episodes.map((entry) => appleEpisode(entry, url, "", true, show))) };
+}
+
+async function xiaoyuzhouShow(url: string, limit: number): Promise<PodcastShow> {
+  const doc = new DOMParser().parseFromString(await getText(url), "text/html");
+  const data = nextData(doc);
+  const meta = metaReader(doc);
+  const show = data ? findAll(data, (value) => typeof value.pid === "string" && Boolean(str(value.title)))[0] : undefined;
+  const episodes = (data ? findAll(data, (value) => typeof value.eid === "string" && Boolean(enclosureUrl(value))) : [])
+    .filter((value, index, list) => list.findIndex((entry) => entry.eid === value.eid) === index)
+    .sort((a, b) => Date.parse(str(b.pubDate)) - Date.parse(str(a.pubDate)))
+    .slice(0, limit);
+  const title = str(show?.title) || meta("og:title");
+  const cover = imageUrl(show?.image) || meta("og:image");
+  return {
+    platform: "xiaoyuzhou",
+    url,
+    title,
+    author: str(show?.author),
+    cover,
+    feedUrl: "",
+    episodes: episodes.map((episode) => ({
+      platform: "xiaoyuzhou" as const,
+      url: `https://www.xiaoyuzhoufm.com/episode/${str(episode.eid)}`,
+      title: str(episode.title),
+      show: title,
+      cover: imageUrl(episode.image) || cover,
+      audioUrl: enclosureUrl(episode),
+      published: day(str(episode.pubDate)),
+      duration: Number(episode.duration) || 0,
+      notes: toMarkdown(str(episode.shownotes) || str(episode.description)),
+      fromShowLink: true,
+      key: `xyz:${str(episode.eid)}`,
+    })),
+  };
+}
+
+async function spotifyShow(url: string, limit: number): Promise<PodcastShow> {
+  const id = url.match(/\/show\/([A-Za-z0-9]+)/i)?.[1] || "";
+  if (!id) throw new Error("no-id");
+  const cleanUrl = `https://open.spotify.com/show/${id}`;
+  const page = new DOMParser().parseFromString(await getText(cleanUrl), "text/html");
+  const meta = metaReader(page);
+  const title = meta("og:title").replace(/\s*\|\s*Podcast on Spotify$/i, "").trim();
+  const cover = meta("og:image");
+  // Most shows are also in Apple's directory, whose RSS feed carries audio and full notes.
+  try {
+    const search = await getJson<{ results?: ItunesResult[] }>(
+      `https://itunes.apple.com/search?media=podcast&entity=podcast&limit=10&term=${encodeURIComponent(title)}`,
+    );
+    const twin = (search.results || []).find((entry) => entry.feedUrl && normalizeTitle(entry.collectionName || "") === normalizeTitle(title));
+    if (twin?.feedUrl) {
+      const episodes = await feedShowEpisodes("spotify", cleanUrl, twin.feedUrl, limit);
+      return { platform: "spotify", url: cleanUrl, title, author: twin.artistName || "", cover: cover || twin.artworkUrl600 || "", feedUrl: twin.feedUrl, episodes };
+    }
+  } catch (error) {
+    console.warn("[Content Library] Spotify show → Apple lookup failed", error);
+  }
+  const ids = [...page.documentElement.innerHTML.matchAll(/(?:\/episode\/|spotify:episode:)([A-Za-z0-9]{22})/g)]
+    .map((found) => found[1])
+    .filter((value, index, list) => list.indexOf(value) === index)
+    .slice(0, Math.min(limit, 5));
+  const episodes: PodcastEpisode[] = [];
+  for (const episodeId of ids) {
+    try {
+      episodes.push({ ...(await resolveSpotify(`https://open.spotify.com/episode/${episodeId}`)), fromShowLink: true });
+    } catch (error) {
+      console.warn("[Content Library] Spotify episode read failed", error);
+    }
+  }
+  return { platform: "spotify", url: cleanUrl, title, author: "", cover, feedUrl: "", episodes };
 }
 
 // ---------- helpers ----------

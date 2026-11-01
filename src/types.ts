@@ -38,6 +38,24 @@ export interface MusicCollectionSnapshot {
   collectionType?: "playlist" | "album" | "program" | "song" | "video";
 }
 
+/** A followed podcast show; new episodes are pulled into its 播客收藏 folder. */
+export interface PodcastSubscription {
+  id: string;
+  /** The show link the user pasted. */
+  url: string;
+  platform: "apple" | "xiaoyuzhou" | "spotify";
+  title: string;
+  author: string;
+  cover: string;
+  feedUrl: string;
+  /** 播客收藏 source the episodes go into. */
+  sourceId: string;
+  /** Episode keys already seen, newest first (capped), so only new ones are added. */
+  seen: string[];
+  added: number;
+  lastChecked: number;
+}
+
 export interface ContentSource {
   id: string;
   name: string;
@@ -89,6 +107,7 @@ export interface DashboardSettings {
   deepseekModel: string;
   /** Set once the 播客收藏 (podcast links) source has been offered, so removing it sticks. */
   podcastLinksSeeded: boolean;
+  podcastSubscriptions: PodcastSubscription[];
 }
 
 export interface WebPreview {
@@ -179,4 +198,5 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
   deepseekApiKey: "",
   deepseekModel: "deepseek-chat",
   podcastLinksSeeded: false,
+  podcastSubscriptions: [],
 };

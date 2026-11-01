@@ -1,6 +1,7 @@
 import {
   arrayBufferToBase64,
   Plugin,
+  Notice,
   requestUrl,
   TAbstractFile,
   TFile,
@@ -10,7 +11,7 @@ import { VaultContentIndexer } from "./indexer";
 import { NOTE_SUFFIXES, dateLocale, noteSuffix, setLanguage, sourceLabel, t, timeLabel } from "./i18n";
 import { AmbientPlayer } from "./ambient";
 import { parseYouTubeUrl } from "./youtube";
-import { resolvePodcastLink, PODCAST_PLATFORM_LABELS, type PodcastEpisode } from "./podcast";
+import { fetchShowEpisodes, resolvePodcastLink, resolvePodcastShow, PODCAST_PLATFORM_LABELS, type PodcastEpisode } from "./podcast";
 import { ThemePackManager, ThemePackStoreModal, sanitizePack, type ThemePack } from "./packs";
 import { ContentLibrarySettingsTab } from "./settings";
 import { SupportModal } from "./support";
@@ -52,6 +53,11 @@ function netEaseSongPlayable(song: NetEaseSongPayload, privilege: NetEasePrivile
   return true;
 }
 
+/** Followed shows are checked at most this often (ms). */
+const PODCAST_CHECK_INTERVAL = 3 * 60 * 60 * 1000;
+const PODCAST_MAX_NEW_PER_CHECK = 10;
+const PODCAST_SEEN_LIMIT = 300;
+
 export default class ContentLibraryDashboardPlugin extends Plugin {
   override settings: DashboardSettings = { ...DEFAULT_SETTINGS };
   indexer!: VaultContentIndexer;
@@ -67,10 +73,14 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
     await this.saveData(this.settings);
     this.indexer = new VaultContentIndexer(this.app);
     this.app.workspace.onLayoutReady(() => {
-      if (!this.seedPodcastLinksSource()) return;
-      void this.saveData(this.settings);
-      this.refreshViews();
+      if (this.seedPodcastLinksSource()) {
+        void this.saveData(this.settings);
+        this.refreshViews();
+      }
+      // Look for new episodes of followed shows shortly after start, then every few hours.
+      window.setTimeout(() => void this.checkPodcastSubscriptions(), 20_000);
     });
+    this.registerInterval(window.setInterval(() => void this.checkPodcastSubscriptions(), PODCAST_CHECK_INTERVAL));
     this.ambient.register();
 
     this.registerView(
@@ -199,6 +209,10 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
         ? loaded.claimedThemes.filter((value): value is DashboardTheme => ["grass", "blue", "pink", "rose", "black", "glass"].includes(value))
         : [],
       podcastLinksSeeded: loaded?.podcastLinksSeeded === true,
+      podcastSubscriptions: Array.isArray(loaded?.podcastSubscriptions)
+        ? loaded.podcastSubscriptions.filter((entry) => entry && typeof entry.url === "string")
+          .map((entry) => ({ ...entry, seen: Array.isArray(entry.seen) ? entry.seen : [] }))
+        : [],
       language: loaded?.language === "zh" || loaded?.language === "en" ? loaded.language : "auto",
       playbackMode: (["sequential", "list-loop", "single-loop", "shuffle"] as const).includes(
         loaded?.playbackMode as DashboardSettings["playbackMode"],
@@ -970,14 +984,24 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
   /** Looks up a podcast link and saves the episode (audio + show notes) as a note in the source folder. */
   async createPodcastEpisodeNote(source: ContentSource, link: string): Promise<{ file: TFile; episode: PodcastEpisode }> {
     const episode = await resolvePodcastLink(link);
+    const existing = this.findPodcastEpisodeNote(source, episode);
+    if (existing && !episode.fromShowLink) return { file: existing, episode };
+    return { file: await this.writePodcastEpisodeNote(source, episode), episode };
+  }
+
+  private findPodcastEpisodeNote(source: ContentSource, episode: PodcastEpisode): TFile | null {
+    const folder = normalizePath(source.folder);
+    return this.app.vault.getMarkdownFiles().find((file) => {
+      if (!file.path.startsWith(`${folder}/`)) return false;
+      const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+      if (episode.key && frontmatter?.episode_key === episode.key) return true;
+      return !episode.fromShowLink && typeof frontmatter?.podcast_url === "string" && frontmatter.podcast_url.trim() === episode.url;
+    }) ?? null;
+  }
+
+  private async writePodcastEpisodeNote(source: ContentSource, episode: PodcastEpisode): Promise<TFile> {
     const folder = normalizePath(source.folder);
     await this.ensureFolder(folder);
-    const existing = this.app.vault.getMarkdownFiles().find((file) => {
-      if (!file.path.startsWith(`${folder}/`)) return false;
-      const saved = this.app.metadataCache.getFileCache(file)?.frontmatter?.podcast_url;
-      return typeof saved === "string" && saved.trim() === episode.url;
-    });
-    if (existing && !episode.fromShowLink) return { file: existing, episode };
     const title = episode.title || t("未命名单集");
     const safeTitle = title.replace(/[\\/:*?"<>|#^[\]]/g, "-").slice(0, 100).trim() || t("未命名单集");
     let path = normalizePath(`${folder}/${safeTitle}.md`);
@@ -991,6 +1015,7 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
       ["podcast", episode.show],
       ["platform", PODCAST_PLATFORM_LABELS[episode.platform]],
       ["podcast_url", episode.url],
+      ["episode_key", episode.key],
       ["audio_url", episode.audioUrl],
       ["cover", episode.cover],
       ["published", episode.published],
@@ -1001,8 +1026,99 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
       .map(([key, value]) => `${key}: ${typeof value === "number" ? value : JSON.stringify(value)}`)
       .join("\n");
     const body = episode.notes.trim() || t("这一期没有 show notes。");
-    const file = await this.app.vault.create(path, `---\n${yaml}\n---\n\n${body}\n`);
-    return { file, episode };
+    return this.app.vault.create(path, `---\n${yaml}\n---\n\n${body}\n`);
+  }
+
+  /** Moves a podcast episode note to the trash (recoverable). Followed shows won't re-add it. */
+  async deletePodcastEpisodeNote(file: TFile): Promise<void> {
+    await this.app.fileManager.trashFile(file);
+  }
+
+  /** Follows a show: saves its newest episode now and pulls later ones as they come out. */
+  async subscribePodcast(source: ContentSource, link: string): Promise<{ title: string; added: number }> {
+    const show = await resolvePodcastShow(link);
+    const known = this.settings.podcastSubscriptions.find((entry) => entry.url === show.url || (show.feedUrl && entry.feedUrl === show.feedUrl));
+    if (known) return { title: known.title, added: 0 };
+    let added = 0;
+    const latest = show.episodes[0];
+    if (latest && !this.findPodcastEpisodeNote(source, latest)) {
+      await this.writePodcastEpisodeNote(source, latest);
+      added = 1;
+    }
+    this.settings.podcastSubscriptions.push({
+      id: `show-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      url: show.url,
+      platform: show.platform,
+      title: show.title || latest?.show || t("未命名节目"),
+      author: show.author,
+      cover: show.cover || latest?.cover || "",
+      feedUrl: show.feedUrl,
+      sourceId: source.id,
+      // Everything already out counts as seen: following starts from the newest episode.
+      seen: show.episodes.map((episode) => episode.key).filter(Boolean).slice(0, PODCAST_SEEN_LIMIT),
+      added: Date.now(),
+      lastChecked: Date.now(),
+    });
+    await this.saveSettings(false);
+    return { title: show.title, added };
+  }
+
+  async unsubscribePodcast(id: string): Promise<void> {
+    this.settings.podcastSubscriptions = this.settings.podcastSubscriptions.filter((entry) => entry.id !== id);
+    await this.saveSettings(false);
+  }
+
+  private podcastCheckRunning: Promise<number> | null = null;
+
+  /**
+   * Pulls new episodes of followed shows. Without `force`, shows checked in the last few hours
+   * are skipped. `onlyId` checks one show. Returns how many episodes were added.
+   */
+  checkPodcastSubscriptions(force = false, onlyId = ""): Promise<number> {
+    if (this.podcastCheckRunning) return this.podcastCheckRunning;
+    const run = this.runPodcastCheck(force, onlyId).finally(() => { this.podcastCheckRunning = null; });
+    this.podcastCheckRunning = run;
+    return run;
+  }
+
+  private async runPodcastCheck(force: boolean, onlyId: string): Promise<number> {
+    const due = this.settings.podcastSubscriptions.filter((entry) => (
+      (!onlyId || entry.id === onlyId) && (force || Date.now() - (entry.lastChecked || 0) > PODCAST_CHECK_INTERVAL)
+    ));
+    if (!due.length) return 0;
+    let added = 0;
+    const names: string[] = [];
+    for (const subscription of due) {
+      const source = this.settings.sources.find((entry) => entry.id === subscription.sourceId && entry.kind === "podlink")
+        || this.settings.sources.find((entry) => entry.kind === "podlink");
+      if (!source) continue;
+      try {
+        const episodes = await fetchShowEpisodes(subscription);
+        const seen = new Set(subscription.seen);
+        // Oldest first, so the notes are created in release order.
+        const fresh = episodes.filter((episode) => episode.key && !seen.has(episode.key)).slice(0, PODCAST_MAX_NEW_PER_CHECK).reverse();
+        for (const episode of fresh) {
+          if (!this.findPodcastEpisodeNote(source, episode)) {
+            await this.writePodcastEpisodeNote(source, episode);
+            added += 1;
+            if (!names.includes(subscription.title)) names.push(subscription.title);
+          }
+        }
+        subscription.seen = [...episodes.map((episode) => episode.key), ...subscription.seen]
+          .filter((key, index, list) => key && list.indexOf(key) === index)
+          .slice(0, PODCAST_SEEN_LIMIT);
+        if (!subscription.cover && episodes[0]?.cover) subscription.cover = episodes[0].cover;
+      } catch (error) {
+        console.warn(`[Content Library] Checking ${subscription.title} failed`, error);
+      }
+      subscription.lastChecked = Date.now();
+    }
+    await this.saveSettings(false);
+    if (added) {
+      new Notice(t("播客更新：{shows} 有 {count} 期新节目", { shows: names.join("、"), count: added }), 6000);
+      this.refreshViews();
+    }
+    return added;
   }
 
   /** Moves a music collection note to the trash (recoverable) and forgets its cached snapshot. */

@@ -509,7 +509,26 @@ var EN = {
   "Claude Code \u4E0D\u4F1A\u81EA\u52A8\u8D70 VPN\u3002\u7559\u7A7A\u65F6\u63D2\u4EF6\u4F1A\u81EA\u52A8\u8BFB\u53D6\u7CFB\u7EDF\u4EE3\u7406\uFF1B\u8FDE\u4E0D\u4E0A\uFF08\u6BD4\u5982\u62A5 403\uFF09\u65F6\uFF0C\u586B\u4F60 VPN \u7684\u672C\u5730\u4EE3\u7406\u5730\u5740\uFF0C\u4F8B\u5982 http://127.0.0.1:7890\u3002": "Claude Code doesn't follow your VPN on its own. Left empty, the plugin uses the system proxy; if it can't connect (e.g. a 403), enter your VPN's local proxy address, such as http://127.0.0.1:7890.",
   "\u81EA\u52A8": "Auto",
   "\u5DE6\u8FB9\u6CA1\u6709\u6253\u5F00\u7684\u7B14\u8BB0\uFF0C\u8FD9\u6761\u6D88\u606F\u4E0D\u4F1A\u9644\u5E26\u7B14\u8BB0\u3002": "No note is open on the left, so this message goes without one.",
-  "\u9644\u5E26\uFF1A{name}": "Including: {name}"
+  "\u9644\u5E26\uFF1A{name}": "Including: {name}",
+  "\u7C98\u8D34 Apple \u64AD\u5BA2\u3001\u5C0F\u5B87\u5B99\u6216 Spotify \u7684\u5355\u96C6\u6216\u8282\u76EE\u4E3B\u9875\u94FE\u63A5\uFF1B\u5173\u6CE8\u7684\u8282\u76EE\u6709\u66F4\u65B0\u4F1A\u81EA\u52A8\u62C9\u53D6": "Paste an Apple Podcasts, Xiaoyuzhou or Spotify episode or show link; followed shows pull new episodes automatically",
+  "\u68C0\u67E5\u66F4\u65B0": "Check for updates",
+  "\u5DF2\u5173\u6CE8\uFF1A{name}\uFF0C\u6700\u65B0\u4E00\u671F\u5DF2\u52A0\u5165\uFF0C\u4EE5\u540E\u6709\u66F4\u65B0\u4F1A\u81EA\u52A8\u62C9\u53D6": "Following {name}. Its latest episode was added, and new ones will arrive automatically",
+  "\u5DF2\u5173\u6CE8\uFF1A{name}": "Following {name}",
+  "\u5173\u6CE8\u7684\u8282\u76EE \xB7 {count}": "Followed shows \xB7 {count}",
+  "{time}\u68C0\u67E5": "checked {time}",
+  "\u53D6\u6D88\u5173\u6CE8": "Unfollow",
+  "\u53D6\u6D88\u5173\u6CE8\u201C{name}\u201D\uFF1F": "Unfollow \u201C{name}\u201D?",
+  "\u5DF2\u7ECF\u6536\u85CF\u7684\u5355\u96C6\u4F1A\u4FDD\u7559\uFF0C\u4EE5\u540E\u4E0D\u518D\u81EA\u52A8\u62C9\u53D6\u8FD9\u4E2A\u8282\u76EE\u7684\u66F4\u65B0\u3002": "Saved episodes stay. New episodes of this show won't be pulled anymore.",
+  "\u5DF2\u53D6\u6D88\u5173\u6CE8\uFF1A{name}": "Unfollowed {name}",
+  "\u6CA1\u6709\u65B0\u7684\u4E00\u671F": "No new episodes",
+  "\u5220\u9664\u8FD9\u4E00\u671F": "Delete episode",
+  "\u5173\u6CE8\u8FD9\u4E2A\u8282\u76EE\uFF0C\u4EE5\u540E\u6709\u65B0\u7684\u4E00\u671F\u81EA\u52A8\u62C9\u53D6": "Follow this show and pull new episodes automatically",
+  "\u64AD\u5BA2\u66F4\u65B0\uFF1A{shows} \u6709 {count} \u671F\u65B0\u8282\u76EE": "Podcast update: {count} new episode(s) from {shows}",
+  "\u5C1A\u672A": "not yet",
+  "\u521A\u521A": "just now",
+  "{count} \u5206\u949F\u524D": "{count} min ago",
+  "{count} \u5C0F\u65F6\u524D": "{count} h ago",
+  "{count} \u5929\u524D": "{count} d ago"
 };
 
 // src/i18n.ts
@@ -888,6 +907,14 @@ function podcastPlatform(url) {
   if (/^https?:\/\/open\.spotify\.com\/(?:intl-[\w-]+\/)?(?:episode|show)\//i.test(url)) return "spotify";
   return null;
 }
+function isPodcastShowLink(raw) {
+  const url = extractPodcastUrl(raw);
+  const platform = podcastPlatform(url);
+  if (platform === "apple") return /\/id\d+/i.test(url) && !/[?&]i=\d+/i.test(url);
+  if (platform === "xiaoyuzhou") return /\/podcast\//i.test(url);
+  if (platform === "spotify") return /\/show\//i.test(url);
+  return false;
+}
 function spotifyEmbedUrl(url) {
   const match = (url || "").match(/open\.spotify\.com\/(?:intl-[\w-]+\/)?(episode|show)\/([A-Za-z0-9]+)/i);
   return match ? `https://open.spotify.com/embed/${match[1].toLowerCase()}/${match[2]}` : "";
@@ -924,7 +951,8 @@ async function resolveXiaoyuzhou(url) {
     published: day(str(episode?.pubDate) || str(ld?.datePublished)),
     duration: Number(episode?.duration) || 0,
     notes: toMarkdown(notesHtml),
-    fromShowLink: isShow
+    fromShowLink: isShow,
+    key: str(episode?.eid) ? `xyz:${str(episode?.eid)}` : audioUrl || url
   };
 }
 function enclosureUrl(value) {
@@ -953,7 +981,7 @@ async function resolveApple(url) {
     const page = new DOMParser().parseFromString(await getText(url), "text/html");
     const title = metaReader(page)("og:title") || page.title;
     const item = await findFeedItem(feedUrl, "", title);
-    if (item) return { ...item, platform: "apple", url, show: item.show || show?.collectionName || "", cover: item.cover || show?.artworkUrl600 || "", fromShowLink: false };
+    if (item) return { ...item, platform: "apple", url, show: item.show || show?.collectionName || "", cover: item.cover || show?.artworkUrl600 || "", fromShowLink: false, key: item.key || url };
   }
   if (!episode) throw new Error("not-found");
   return appleEpisode(episode, url, feedUrl || episode.feedUrl || "", !episodeId, show);
@@ -979,32 +1007,41 @@ async function appleEpisode(episode, url, feedUrl, fromShowLink, show) {
     published: day(episode.releaseDate || ""),
     duration: Math.round((episode.trackTimeMillis || 0) / 1e3),
     notes: richNotes || notes,
-    fromShowLink
+    fromShowLink,
+    key: episode.episodeGuid ? `guid:${episode.episodeGuid}` : `apple:${episode.trackId || episode.episodeUrl || ""}`
   };
 }
-async function findFeedItem(feedUrl, guid, title) {
+async function readFeed(feedUrl) {
   const xml = new DOMParser().parseFromString(await getText(feedUrl, "application/rss+xml, application/xml, text/xml"), "text/xml");
-  const channelTitle = xml.querySelector("channel > title")?.textContent?.trim() || "";
-  const channelImage = xml.querySelector("channel > image > url")?.textContent?.trim() || itunesAttr(xml.querySelector("channel"), "image", "href");
-  const wanted = normalizeTitle(title);
-  const item = Array.from(xml.getElementsByTagName("item")).find((entry) => {
-    const entryGuid = entry.getElementsByTagName("guid")[0]?.textContent?.trim() || "";
-    if (guid && entryGuid === guid) return true;
-    return Boolean(wanted) && normalizeTitle(entry.getElementsByTagName("title")[0]?.textContent || "") === wanted;
+  const channel = xml.querySelector("channel");
+  const title = xml.querySelector("channel > title")?.textContent?.trim() || "";
+  const cover = xml.querySelector("channel > image > url")?.textContent?.trim() || itunesAttr(channel, "image", "href");
+  const author = channel ? itunesText(channel, "author") : "";
+  const items = Array.from(xml.getElementsByTagName("item")).map((item) => {
+    const encoded = item.getElementsByTagNameNS("http://purl.org/rss/1.0/modules/content/", "encoded")[0]?.textContent || "";
+    const description = encoded || item.getElementsByTagName("description")[0]?.textContent || itunesText(item, "summary");
+    const guid = item.getElementsByTagName("guid")[0]?.textContent?.trim() || "";
+    const audioUrl = item.getElementsByTagName("enclosure")[0]?.getAttribute("url") || "";
+    return {
+      guid,
+      link: item.getElementsByTagName("link")[0]?.textContent?.trim() || "",
+      key: guid ? `guid:${guid}` : audioUrl,
+      title: item.getElementsByTagName("title")[0]?.textContent?.trim() || "",
+      show: title,
+      cover: itunesAttr(item, "image", "href") || cover,
+      audioUrl,
+      published: day(item.getElementsByTagName("pubDate")[0]?.textContent || ""),
+      duration: parseDuration(itunesText(item, "duration")),
+      notes: toMarkdown(description)
+    };
   });
-  if (!item) return null;
-  const encoded = item.getElementsByTagNameNS("http://purl.org/rss/1.0/modules/content/", "encoded")[0]?.textContent || "";
-  const description = encoded || item.getElementsByTagName("description")[0]?.textContent || itunesText(item, "summary");
-  const durationText = itunesText(item, "duration");
-  return {
-    title: item.getElementsByTagName("title")[0]?.textContent?.trim() || title,
-    show: channelTitle,
-    cover: itunesAttr(item, "image", "href") || channelImage,
-    audioUrl: item.getElementsByTagName("enclosure")[0]?.getAttribute("url") || "",
-    published: day(item.getElementsByTagName("pubDate")[0]?.textContent || ""),
-    duration: parseDuration(durationText),
-    notes: toMarkdown(description)
-  };
+  return { title, author, cover, items };
+}
+async function findFeedItem(feedUrl, guid, title) {
+  const feed = await readFeed(feedUrl);
+  const wanted = normalizeTitle(title);
+  const item = feed.items.find((entry) => guid && entry.guid === guid || Boolean(wanted) && normalizeTitle(entry.title) === wanted);
+  return item || null;
 }
 function itunesText(parent, name) {
   return parent.getElementsByTagNameNS("http://www.itunes.com/dtds/podcast-1.0.dtd", name)[0]?.textContent?.trim() || "";
@@ -1048,7 +1085,8 @@ async function resolveSpotify(url) {
     published: day(meta("music:release_date")),
     duration: Number(meta("music:duration")) || 0,
     notes: plainTextToMarkdown(pageNotes),
-    fromShowLink: false
+    fromShowLink: false,
+    key: `spotify:${match[2]}`
   };
   try {
     const twin = await findItunesTwin(base.title, base.show);
@@ -1078,6 +1116,116 @@ async function findItunesTwin(title, show) {
   const wantedShow = normalizeTitle(show);
   const candidates = (search.results || []).filter((entry) => normalizeTitle(entry.trackName || "") === wanted && entry.episodeUrl);
   return candidates.find((entry) => !wantedShow || normalizeTitle(entry.collectionName || "") === wantedShow) || (candidates.length === 1 && !wantedShow ? candidates[0] : null) || null;
+}
+async function resolvePodcastShow(raw, limit = 20) {
+  const url = extractPodcastUrl(raw);
+  const platform = podcastPlatform(url);
+  if (!platform) throw new Error("unsupported");
+  if (platform === "apple") return appleShow(url, limit);
+  if (platform === "xiaoyuzhou") return xiaoyuzhouShow(url, limit);
+  return spotifyShow(url, limit);
+}
+async function fetchShowEpisodes(show, limit = 20) {
+  if (show.feedUrl) {
+    try {
+      return await feedShowEpisodes(show.platform, show.url, show.feedUrl, limit);
+    } catch (error) {
+      console.warn("[Content Library] Podcast feed refresh failed, trying the show page", error);
+    }
+  }
+  return (await resolvePodcastShow(show.url, limit)).episodes;
+}
+async function feedShowEpisodes(platform, showUrl, feedUrl, limit) {
+  const feed = await readFeed(feedUrl);
+  return feed.items.filter((item) => item.audioUrl).sort((a, b) => Date.parse(b.published || "") - Date.parse(a.published || "")).slice(0, limit).map(({ guid: _guid, link, ...item }) => ({
+    ...item,
+    platform,
+    url: /^https?:/i.test(link) ? link : showUrl,
+    show: item.show || feed.title,
+    fromShowLink: true
+  }));
+}
+async function appleShow(url, limit) {
+  const showId = url.match(/\/id(\d+)/i)?.[1] || "";
+  if (!showId) throw new Error("no-id");
+  const country = url.match(/apple\.com\/([a-z]{2})\//i)?.[1]?.toLowerCase() || "";
+  const lookup = await getJson(
+    `https://itunes.apple.com/lookup?id=${showId}&entity=podcastEpisode&limit=${Math.max(limit, 10)}${country ? `&country=${country}` : ""}`
+  );
+  const results = lookup.results || [];
+  const show = results.find((entry) => entry.kind === "podcast" || entry.wrapperType === "track");
+  if (!show) throw new Error("not-found");
+  const base = { platform: "apple", url, title: show.collectionName || "", author: show.artistName || "", cover: show.artworkUrl600 || "", feedUrl: show.feedUrl || "" };
+  if (base.feedUrl) {
+    try {
+      return { ...base, episodes: await feedShowEpisodes("apple", url, base.feedUrl, limit) };
+    } catch (error) {
+      console.warn("[Content Library] Apple show feed failed, using the directory", error);
+    }
+  }
+  const episodes = results.filter((entry) => entry.wrapperType === "podcastEpisode" || entry.kind === "podcast-episode").sort((a, b) => Date.parse(b.releaseDate || "") - Date.parse(a.releaseDate || "")).slice(0, limit);
+  return { ...base, episodes: await Promise.all(episodes.map((entry) => appleEpisode(entry, url, "", true, show))) };
+}
+async function xiaoyuzhouShow(url, limit) {
+  const doc = new DOMParser().parseFromString(await getText(url), "text/html");
+  const data = nextData(doc);
+  const meta = metaReader(doc);
+  const show = data ? findAll(data, (value) => typeof value.pid === "string" && Boolean(str(value.title)))[0] : void 0;
+  const episodes = (data ? findAll(data, (value) => typeof value.eid === "string" && Boolean(enclosureUrl(value))) : []).filter((value, index, list) => list.findIndex((entry) => entry.eid === value.eid) === index).sort((a, b) => Date.parse(str(b.pubDate)) - Date.parse(str(a.pubDate))).slice(0, limit);
+  const title = str(show?.title) || meta("og:title");
+  const cover = imageUrl(show?.image) || meta("og:image");
+  return {
+    platform: "xiaoyuzhou",
+    url,
+    title,
+    author: str(show?.author),
+    cover,
+    feedUrl: "",
+    episodes: episodes.map((episode) => ({
+      platform: "xiaoyuzhou",
+      url: `https://www.xiaoyuzhoufm.com/episode/${str(episode.eid)}`,
+      title: str(episode.title),
+      show: title,
+      cover: imageUrl(episode.image) || cover,
+      audioUrl: enclosureUrl(episode),
+      published: day(str(episode.pubDate)),
+      duration: Number(episode.duration) || 0,
+      notes: toMarkdown(str(episode.shownotes) || str(episode.description)),
+      fromShowLink: true,
+      key: `xyz:${str(episode.eid)}`
+    }))
+  };
+}
+async function spotifyShow(url, limit) {
+  const id = url.match(/\/show\/([A-Za-z0-9]+)/i)?.[1] || "";
+  if (!id) throw new Error("no-id");
+  const cleanUrl = `https://open.spotify.com/show/${id}`;
+  const page = new DOMParser().parseFromString(await getText(cleanUrl), "text/html");
+  const meta = metaReader(page);
+  const title = meta("og:title").replace(/\s*\|\s*Podcast on Spotify$/i, "").trim();
+  const cover = meta("og:image");
+  try {
+    const search = await getJson(
+      `https://itunes.apple.com/search?media=podcast&entity=podcast&limit=10&term=${encodeURIComponent(title)}`
+    );
+    const twin = (search.results || []).find((entry) => entry.feedUrl && normalizeTitle(entry.collectionName || "") === normalizeTitle(title));
+    if (twin?.feedUrl) {
+      const episodes2 = await feedShowEpisodes("spotify", cleanUrl, twin.feedUrl, limit);
+      return { platform: "spotify", url: cleanUrl, title, author: twin.artistName || "", cover: cover || twin.artworkUrl600 || "", feedUrl: twin.feedUrl, episodes: episodes2 };
+    }
+  } catch (error) {
+    console.warn("[Content Library] Spotify show \u2192 Apple lookup failed", error);
+  }
+  const ids = [...page.documentElement.innerHTML.matchAll(/(?:\/episode\/|spotify:episode:)([A-Za-z0-9]{22})/g)].map((found) => found[1]).filter((value, index, list) => list.indexOf(value) === index).slice(0, Math.min(limit, 5));
+  const episodes = [];
+  for (const episodeId of ids) {
+    try {
+      episodes.push({ ...await resolveSpotify(`https://open.spotify.com/episode/${episodeId}`), fromShowLink: true });
+    } catch (error) {
+      console.warn("[Content Library] Spotify episode read failed", error);
+    }
+  }
+  return { platform: "spotify", url: cleanUrl, title, author: "", cover, feedUrl: "", episodes };
 }
 async function getText(url, accept = "text/html,application/xhtml+xml") {
   const response = await (0, import_obsidian2.requestUrl)({ url, method: "GET", headers: { Accept: accept, "User-Agent": UA } });
@@ -1219,7 +1367,8 @@ var DEFAULT_SETTINGS = {
   aiProxy: "",
   deepseekApiKey: "",
   deepseekModel: "deepseek-chat",
-  podcastLinksSeeded: false
+  podcastLinksSeeded: false,
+  podcastSubscriptions: []
 };
 
 // src/support.ts
@@ -3796,25 +3945,37 @@ var ContentLibraryView = class _ContentLibraryView extends import_obsidian8.Item
     const grid = main.createDiv({ cls: "cld-library-grid cld-recent-grid" });
     for (const item of items.slice(0, 20)) this.renderContentCard(grid, item);
   }
-  /** 播客收藏: episodes saved from Apple Podcasts / 小宇宙 / Spotify links. */
+  /** 播客收藏: followed shows plus episodes saved from Apple Podcasts / 小宇宙 / Spotify links. */
   renderPodcastLinkLibrary(main, source, items) {
     const episodes = items.filter((item) => item.file.extension === "md");
+    const shows = this.plugin.settings.podcastSubscriptions.filter((entry) => entry.sourceId === source.id || !this.plugin.settings.sources.some((other) => other.id === entry.sourceId));
+    if (shows.length) void this.plugin.checkPodcastSubscriptions();
     const sectionHead = main.createDiv({ cls: "cld-section-head cld-music-section-head" });
     const heading = sectionHead.createDiv();
     heading.createEl("strong", { text: t("\u64AD\u5BA2\u6536\u85CF") });
-    heading.createEl("p", { text: t("\u7C98\u8D34 Apple \u64AD\u5BA2\u3001\u5C0F\u5B87\u5B99\u6216 Spotify \u7684\u5355\u96C6\u94FE\u63A5\uFF0C\u5728\u8FD9\u91CC\u6536\u542C\u5E76\u67E5\u770B show notes") });
+    heading.createEl("p", { text: t("\u7C98\u8D34 Apple \u64AD\u5BA2\u3001\u5C0F\u5B87\u5B99\u6216 Spotify \u7684\u5355\u96C6\u6216\u8282\u76EE\u4E3B\u9875\u94FE\u63A5\uFF1B\u5173\u6CE8\u7684\u8282\u76EE\u6709\u66F4\u65B0\u4F1A\u81EA\u52A8\u62C9\u53D6") });
     const actions = sectionHead.createDiv({ cls: "cld-music-section-actions" });
     actions.createEl("small", { text: t("{count} \u671F", { count: episodes.length }) });
+    if (shows.length) {
+      const check = actions.createEl("button", { cls: "cld-text-button", text: t("\u68C0\u67E5\u66F4\u65B0"), attr: { type: "button" } });
+      check.addEventListener("click", () => void this.checkShows(check));
+    }
     const add = actions.createEl("button", { cls: "cld-text-button mod-cta", text: t("\u6DFB\u52A0\u64AD\u5BA2"), attr: { type: "button" } });
     add.addEventListener("click", () => {
-      new PodcastLinkModal(this.app, source.name, async (link) => {
+      new PodcastLinkModal(this.app, source.name, async (link, follow) => {
         const notice = new import_obsidian8.Notice(t("\u6B63\u5728\u83B7\u53D6\u8282\u76EE\u4FE1\u606F\u2026"), 0);
         try {
-          const { file, episode } = await this.plugin.createPodcastEpisodeNote(source, link);
-          notice.hide();
-          if (episode.fromShowLink) new import_obsidian8.Notice(t("\u8FD9\u662F\u8282\u76EE\u4E3B\u9875\u94FE\u63A5\uFF0C\u5DF2\u6DFB\u52A0\u6700\u65B0\u4E00\u671F\uFF1A{name}", { name: episode.title }), 6e3);
-          else new import_obsidian8.Notice(t("\u5DF2\u6DFB\u52A0\uFF1A{name}", { name: file.basename }));
-          if (episode.platform === "spotify" && !episode.audioUrl) new import_obsidian8.Notice(t("Spotify \u4E0D\u63D0\u4F9B\u97F3\u9891\u6587\u4EF6\uFF0C\u8FD9\u4E00\u671F\u4F1A\u7528 Spotify \u64AD\u653E\u5668\u64AD\u653E\u3002"), 6e3);
+          if (follow) {
+            const result = await this.plugin.subscribePodcast(source, link);
+            notice.hide();
+            new import_obsidian8.Notice(result.added ? t("\u5DF2\u5173\u6CE8\uFF1A{name}\uFF0C\u6700\u65B0\u4E00\u671F\u5DF2\u52A0\u5165\uFF0C\u4EE5\u540E\u6709\u66F4\u65B0\u4F1A\u81EA\u52A8\u62C9\u53D6", { name: result.title }) : t("\u5DF2\u5173\u6CE8\uFF1A{name}", { name: result.title }), 6e3);
+          } else {
+            const { file, episode } = await this.plugin.createPodcastEpisodeNote(source, link);
+            notice.hide();
+            if (episode.fromShowLink) new import_obsidian8.Notice(t("\u8FD9\u662F\u8282\u76EE\u4E3B\u9875\u94FE\u63A5\uFF0C\u5DF2\u6DFB\u52A0\u6700\u65B0\u4E00\u671F\uFF1A{name}", { name: episode.title }), 6e3);
+            else new import_obsidian8.Notice(t("\u5DF2\u6DFB\u52A0\uFF1A{name}", { name: file.basename }));
+            if (episode.platform === "spotify" && !episode.audioUrl) new import_obsidian8.Notice(t("Spotify \u4E0D\u63D0\u4F9B\u97F3\u9891\u6587\u4EF6\uFF0C\u8FD9\u4E00\u671F\u4F1A\u7528 Spotify \u64AD\u653E\u5668\u64AD\u653E\u3002"), 6e3);
+          }
           await this.refresh();
         } catch (error) {
           notice.hide();
@@ -3822,6 +3983,7 @@ var ContentLibraryView = class _ContentLibraryView extends import_obsidian8.Item
         }
       }).open();
     });
+    if (shows.length) this.renderFollowedShows(main, shows, episodes);
     if (!episodes.length) {
       const empty = main.createDiv({ cls: "cld-empty cld-glass" });
       empty.createEl("strong", { text: t("\u8FD8\u6CA1\u6709\u64AD\u5BA2") });
@@ -3830,6 +3992,58 @@ var ContentLibraryView = class _ContentLibraryView extends import_obsidian8.Item
     }
     const grid = main.createDiv({ cls: "cld-library-grid cld-recent-grid" });
     for (const item of episodes) this.renderContentCard(grid, item);
+  }
+  renderFollowedShows(main, shows, episodes) {
+    const wrap = main.createDiv({ cls: "cld-followed-shows" });
+    wrap.createEl("small", { cls: "cld-followed-label", text: t("\u5173\u6CE8\u7684\u8282\u76EE \xB7 {count}", { count: shows.length }) });
+    const row = wrap.createDiv({ cls: "cld-followed-row" });
+    for (const show of shows) {
+      const card = row.createDiv({ cls: "cld-followed-show cld-glass" });
+      const cover = card.createDiv({ cls: "cld-followed-cover" });
+      if (show.cover) cover.style.backgroundImage = `url("${show.cover.replace(/"/g, "%22")}")`;
+      else (0, import_obsidian8.setIcon)(cover, "podcast");
+      const copy = card.createDiv({ cls: "cld-followed-copy" });
+      copy.createEl("strong", { text: show.title });
+      const count = episodes.filter((item) => item.subtitle === show.title).length;
+      copy.createEl("small", { text: `${t("{count} \u671F", { count })} \xB7 ${t("{time}\u68C0\u67E5", { time: relativeTime(show.lastChecked) })}` });
+      const tools = card.createDiv({ cls: "cld-followed-tools" });
+      const check = tools.createEl("button", { cls: "cld-icon-button", attr: { type: "button", "aria-label": t("\u68C0\u67E5\u66F4\u65B0"), title: t("\u68C0\u67E5\u66F4\u65B0") } });
+      (0, import_obsidian8.setIcon)(check, "refresh-cw");
+      check.addEventListener("click", () => void this.checkShows(check, show.id));
+      const remove = tools.createEl("button", { cls: "cld-icon-button", attr: { type: "button", "aria-label": t("\u53D6\u6D88\u5173\u6CE8"), title: t("\u53D6\u6D88\u5173\u6CE8") } });
+      (0, import_obsidian8.setIcon)(remove, "user-minus");
+      remove.addEventListener("click", () => {
+        new ConfirmModal(this.app, t("\u53D6\u6D88\u5173\u6CE8\u201C{name}\u201D\uFF1F", { name: show.title }), t("\u5DF2\u7ECF\u6536\u85CF\u7684\u5355\u96C6\u4F1A\u4FDD\u7559\uFF0C\u4EE5\u540E\u4E0D\u518D\u81EA\u52A8\u62C9\u53D6\u8FD9\u4E2A\u8282\u76EE\u7684\u66F4\u65B0\u3002"), t("\u53D6\u6D88\u5173\u6CE8"), async () => {
+          await this.plugin.unsubscribePodcast(show.id);
+          new import_obsidian8.Notice(t("\u5DF2\u53D6\u6D88\u5173\u6CE8\uFF1A{name}", { name: show.title }));
+          await this.refresh();
+        }).open();
+      });
+    }
+  }
+  async checkShows(button, onlyId = "") {
+    button.disabled = true;
+    button.addClass("is-loading");
+    try {
+      const added = await this.plugin.checkPodcastSubscriptions(true, onlyId);
+      if (!added) new import_obsidian8.Notice(t("\u6CA1\u6709\u65B0\u7684\u4E00\u671F"));
+    } finally {
+      button.disabled = false;
+      button.removeClass("is-loading");
+    }
+    await this.refresh();
+  }
+  confirmDeletePodcastEpisode(item) {
+    new ConfirmDeleteModal(this.app, item.title, async () => {
+      if (this.audioItemId === item.id || this.selected?.id === item.id) this.destroyAudio();
+      await this.plugin.deletePodcastEpisodeNote(item.file);
+      if (this.selected?.id === item.id) {
+        this.selected = null;
+        this.detailOpen = false;
+      }
+      new import_obsidian8.Notice(t("\u5DF2\u5220\u9664\uFF1A{name}\uFF08\u53EF\u5728\u5E9F\u7EB8\u7BD3\u6062\u590D\uFF09", { name: item.title }));
+      await this.refresh();
+    }).open();
   }
   async renderMusicLibrary(main, items) {
     const playlists = items.filter((item) => Boolean(item.playlistUrl));
@@ -4513,6 +4727,19 @@ var ContentLibraryView = class _ContentLibraryView extends import_obsidian8.Item
       const progress = cover.createDiv({ cls: "cld-cover-progress" });
       progress.createSpan().style.width = `${item.progress}%`;
     }
+    if (item.kind === "podlink") {
+      const remove = button.createSpan({ cls: "cld-card-delete", attr: { role: "button", tabindex: "0", "aria-label": t("\u5220\u9664\u8FD9\u4E00\u671F"), title: t("\u5220\u9664\u8FD9\u4E00\u671F") } });
+      (0, import_obsidian8.setIcon)(remove, "trash-2");
+      const onRemove = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.confirmDeletePodcastEpisode(item);
+      };
+      remove.addEventListener("click", onRemove);
+      remove.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") onRemove(event);
+      });
+    }
     const copy = button.createDiv({ cls: "cld-card-copy" });
     if (!coverUrl) {
       const excerpt = copy.createEl("p", { cls: "cld-card-excerpt cld-card-excerpt-inline", text: this.cardExcerptFallback(item) });
@@ -4612,6 +4839,9 @@ var ContentLibraryView = class _ContentLibraryView extends import_obsidian8.Item
       }));
     }
     menu.addItem((entry) => entry.setTitle("Open source note").setIcon("file-text").onClick(() => void this.openFile(item.file)));
+    if (item.kind === "podlink") {
+      menu.addItem((entry) => entry.setTitle(t("\u5220\u9664\u8FD9\u4E00\u671F")).setIcon("trash-2").onClick(() => this.confirmDeletePodcastEpisode(item)));
+    }
     if (item.externalUrl) menu.addItem((entry) => entry.setTitle("Open original link").setIcon("external-link").onClick(() => window.open(item.externalUrl, "_blank")));
     menu.addItem((entry) => entry.setTitle("Set cover path").setIcon("image-plus").onClick(() => {
       const next = window.prompt("Vault image path or https URL", this.plugin.settings.coverOverrides[item.file.path] || "");
@@ -4701,8 +4931,12 @@ var ContentLibraryView = class _ContentLibraryView extends import_obsidian8.Item
       weave.addEventListener("click", () => this.executeCommand("weave-epub-reader:open-active-epub-reader"));
     }
     if (item.externalUrl) {
-      const original = headerActions.createEl("button", { cls: "cld-text-button", text: t("\u6253\u5F00\u539F\u59CB\u7F51\u9875"), attr: { type: "button" } });
+      const original = headerActions.createEl("button", { cls: "cld-text-button", text: item.kind === "podlink" ? t("\u5728\u5E73\u53F0\u4E2D\u6253\u5F00 \u2197") : t("\u6253\u5F00\u539F\u59CB\u7F51\u9875"), attr: { type: "button" } });
       original.addEventListener("click", () => window.open(item.externalUrl, "_blank"));
+    }
+    if (item.kind === "podlink") {
+      const remove = headerActions.createEl("button", { cls: "cld-text-button cld-danger-button", text: t("\u5220\u9664\u8FD9\u4E00\u671F"), attr: { type: "button" } });
+      remove.addEventListener("click", () => this.confirmDeletePodcastEpisode(item));
     }
     if (!this.articleReturnItem) this.renderReadingNavigation(headerActions, item);
     const article = grid.createEl("article", { cls: "cld-reading-page markdown-rendered" });
@@ -5875,6 +6109,15 @@ function openExternalUrl(url, _appPath = "") {
   }
   return Promise.resolve();
 }
+function relativeTime(time) {
+  if (!time) return t("\u5C1A\u672A");
+  const minutes = Math.round((Date.now() - time) / 6e4);
+  if (minutes < 1) return t("\u521A\u521A");
+  if (minutes < 60) return t("{count} \u5206\u949F\u524D", { count: minutes });
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return t("{count} \u5C0F\u65F6\u524D", { count: hours });
+  return t("{count} \u5929\u524D", { count: Math.round(hours / 24) });
+}
 function isListening(item) {
   return item.kind === "podcast" || item.kind === "podlink";
 }
@@ -6018,6 +6261,12 @@ var PodcastLinkModal = class extends import_obsidian8.Modal {
       cls: "cld-note-title-input",
       attr: { type: "text", placeholder: t("Apple \u64AD\u5BA2 / \u5C0F\u5B87\u5B99 / Spotify \u94FE\u63A5"), autocomplete: "off", "aria-label": t("\u64AD\u5BA2\u94FE\u63A5") }
     });
+    const followRow = form.createEl("label", { cls: "cld-follow-option" });
+    const follow = followRow.createEl("input", { attr: { type: "checkbox" } });
+    follow.checked = true;
+    followRow.createSpan({ text: t("\u5173\u6CE8\u8FD9\u4E2A\u8282\u76EE\uFF0C\u4EE5\u540E\u6709\u65B0\u7684\u4E00\u671F\u81EA\u52A8\u62C9\u53D6") });
+    followRow.hide();
+    input.addEventListener("input", () => followRow.toggle(isPodcastShowLink(input.value)));
     const actions = form.createDiv({ cls: "cld-note-modal-actions" });
     const cancel = actions.createEl("button", { text: t("\u53D6\u6D88"), attr: { type: "button" } });
     const create = actions.createEl("button", { cls: "mod-cta", text: t("\u6DFB\u52A0"), attr: { type: "submit" } });
@@ -6033,7 +6282,7 @@ var PodcastLinkModal = class extends import_obsidian8.Modal {
       create.disabled = true;
       create.setText(t("\u83B7\u53D6\u4E2D\u2026"));
       try {
-        await this.onSubmitLink(link);
+        await this.onSubmitLink(link, isPodcastShowLink(link) && follow.checked);
         this.close();
       } catch (error) {
         console.warn("[Content Library] Podcast link failed", error);
@@ -6091,6 +6340,39 @@ var MusicPlaylistModal = class extends import_obsidian8.Modal {
       }
     });
     window.setTimeout(() => input.focus(), 0);
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+};
+var ConfirmModal = class extends import_obsidian8.Modal {
+  constructor(app, heading, message, confirmLabel, onConfirm) {
+    super(app);
+    this.heading = heading;
+    this.message = message;
+    this.confirmLabel = confirmLabel;
+    this.onConfirm = onConfirm;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass("cld-note-modal");
+    contentEl.createEl("h2", { text: this.heading });
+    contentEl.createEl("p", { text: this.message });
+    const actions = contentEl.createDiv({ cls: "cld-note-modal-actions" });
+    const cancel = actions.createEl("button", { text: t("\u53D6\u6D88"), attr: { type: "button" } });
+    const confirm = actions.createEl("button", { cls: "mod-warning", text: this.confirmLabel, attr: { type: "button" } });
+    cancel.addEventListener("click", () => this.close());
+    confirm.addEventListener("click", async () => {
+      confirm.disabled = true;
+      try {
+        await this.onConfirm();
+        this.close();
+      } catch {
+        confirm.disabled = false;
+      }
+    });
+    window.setTimeout(() => cancel.focus(), 0);
   }
   onClose() {
     this.contentEl.empty();
@@ -6365,6 +6647,9 @@ function netEaseSongPlayable(song, privilege) {
   if (typeof privilege.pl === "number" && privilege.pl <= 0) return false;
   return true;
 }
+var PODCAST_CHECK_INTERVAL = 3 * 60 * 60 * 1e3;
+var PODCAST_MAX_NEW_PER_CHECK = 10;
+var PODCAST_SEEN_LIMIT = 300;
 var ContentLibraryDashboardPlugin = class extends import_obsidian9.Plugin {
   settings = { ...DEFAULT_SETTINGS };
   indexer;
@@ -6379,10 +6664,13 @@ var ContentLibraryDashboardPlugin = class extends import_obsidian9.Plugin {
     await this.saveData(this.settings);
     this.indexer = new VaultContentIndexer(this.app);
     this.app.workspace.onLayoutReady(() => {
-      if (!this.seedPodcastLinksSource()) return;
-      void this.saveData(this.settings);
-      this.refreshViews();
+      if (this.seedPodcastLinksSource()) {
+        void this.saveData(this.settings);
+        this.refreshViews();
+      }
+      window.setTimeout(() => void this.checkPodcastSubscriptions(), 2e4);
     });
+    this.registerInterval(window.setInterval(() => void this.checkPodcastSubscriptions(), PODCAST_CHECK_INTERVAL));
     this.ambient.register();
     this.registerView(
       CONTENT_LIBRARY_VIEW_TYPE,
@@ -6484,6 +6772,7 @@ var ContentLibraryDashboardPlugin = class extends import_obsidian9.Plugin {
       musicCollectionSnapshots: loaded?.musicCollectionSnapshots && typeof loaded.musicCollectionSnapshots === "object" ? loaded.musicCollectionSnapshots : {},
       claimedThemes: Array.isArray(loaded?.claimedThemes) ? loaded.claimedThemes.filter((value) => ["grass", "blue", "pink", "rose", "black", "glass"].includes(value)) : [],
       podcastLinksSeeded: loaded?.podcastLinksSeeded === true,
+      podcastSubscriptions: Array.isArray(loaded?.podcastSubscriptions) ? loaded.podcastSubscriptions.filter((entry) => entry && typeof entry.url === "string").map((entry) => ({ ...entry, seen: Array.isArray(entry.seen) ? entry.seen : [] })) : [],
       language: loaded?.language === "zh" || loaded?.language === "en" ? loaded.language : "auto",
       playbackMode: ["sequential", "list-loop", "single-loop", "shuffle"].includes(
         loaded?.playbackMode
@@ -7160,14 +7449,22 @@ playlist_url: ${url.trim()}
   /** Looks up a podcast link and saves the episode (audio + show notes) as a note in the source folder. */
   async createPodcastEpisodeNote(source, link) {
     const episode = await resolvePodcastLink(link);
+    const existing = this.findPodcastEpisodeNote(source, episode);
+    if (existing && !episode.fromShowLink) return { file: existing, episode };
+    return { file: await this.writePodcastEpisodeNote(source, episode), episode };
+  }
+  findPodcastEpisodeNote(source, episode) {
+    const folder = (0, import_obsidian9.normalizePath)(source.folder);
+    return this.app.vault.getMarkdownFiles().find((file) => {
+      if (!file.path.startsWith(`${folder}/`)) return false;
+      const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+      if (episode.key && frontmatter?.episode_key === episode.key) return true;
+      return !episode.fromShowLink && typeof frontmatter?.podcast_url === "string" && frontmatter.podcast_url.trim() === episode.url;
+    }) ?? null;
+  }
+  async writePodcastEpisodeNote(source, episode) {
     const folder = (0, import_obsidian9.normalizePath)(source.folder);
     await this.ensureFolder(folder);
-    const existing = this.app.vault.getMarkdownFiles().find((file2) => {
-      if (!file2.path.startsWith(`${folder}/`)) return false;
-      const saved = this.app.metadataCache.getFileCache(file2)?.frontmatter?.podcast_url;
-      return typeof saved === "string" && saved.trim() === episode.url;
-    });
-    if (existing && !episode.fromShowLink) return { file: existing, episode };
     const title = episode.title || t("\u672A\u547D\u540D\u5355\u96C6");
     const safeTitle = title.replace(/[\\/:*?"<>|#^[\]]/g, "-").slice(0, 100).trim() || t("\u672A\u547D\u540D\u5355\u96C6");
     let path = (0, import_obsidian9.normalizePath)(`${folder}/${safeTitle}.md`);
@@ -7181,6 +7478,7 @@ playlist_url: ${url.trim()}
       ["podcast", episode.show],
       ["platform", PODCAST_PLATFORM_LABELS[episode.platform]],
       ["podcast_url", episode.url],
+      ["episode_key", episode.key],
       ["audio_url", episode.audioUrl],
       ["cover", episode.cover],
       ["published", episode.published],
@@ -7188,13 +7486,94 @@ playlist_url: ${url.trim()}
     ];
     const yaml = fields.filter(([, value]) => value !== "" && value !== 0).map(([key, value]) => `${key}: ${typeof value === "number" ? value : JSON.stringify(value)}`).join("\n");
     const body = episode.notes.trim() || t("\u8FD9\u4E00\u671F\u6CA1\u6709 show notes\u3002");
-    const file = await this.app.vault.create(path, `---
+    return this.app.vault.create(path, `---
 ${yaml}
 ---
 
 ${body}
 `);
-    return { file, episode };
+  }
+  /** Moves a podcast episode note to the trash (recoverable). Followed shows won't re-add it. */
+  async deletePodcastEpisodeNote(file) {
+    await this.app.fileManager.trashFile(file);
+  }
+  /** Follows a show: saves its newest episode now and pulls later ones as they come out. */
+  async subscribePodcast(source, link) {
+    const show = await resolvePodcastShow(link);
+    const known = this.settings.podcastSubscriptions.find((entry) => entry.url === show.url || show.feedUrl && entry.feedUrl === show.feedUrl);
+    if (known) return { title: known.title, added: 0 };
+    let added = 0;
+    const latest = show.episodes[0];
+    if (latest && !this.findPodcastEpisodeNote(source, latest)) {
+      await this.writePodcastEpisodeNote(source, latest);
+      added = 1;
+    }
+    this.settings.podcastSubscriptions.push({
+      id: `show-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      url: show.url,
+      platform: show.platform,
+      title: show.title || latest?.show || t("\u672A\u547D\u540D\u8282\u76EE"),
+      author: show.author,
+      cover: show.cover || latest?.cover || "",
+      feedUrl: show.feedUrl,
+      sourceId: source.id,
+      // Everything already out counts as seen: following starts from the newest episode.
+      seen: show.episodes.map((episode) => episode.key).filter(Boolean).slice(0, PODCAST_SEEN_LIMIT),
+      added: Date.now(),
+      lastChecked: Date.now()
+    });
+    await this.saveSettings(false);
+    return { title: show.title, added };
+  }
+  async unsubscribePodcast(id) {
+    this.settings.podcastSubscriptions = this.settings.podcastSubscriptions.filter((entry) => entry.id !== id);
+    await this.saveSettings(false);
+  }
+  podcastCheckRunning = null;
+  /**
+   * Pulls new episodes of followed shows. Without `force`, shows checked in the last few hours
+   * are skipped. `onlyId` checks one show. Returns how many episodes were added.
+   */
+  checkPodcastSubscriptions(force = false, onlyId = "") {
+    if (this.podcastCheckRunning) return this.podcastCheckRunning;
+    const run = this.runPodcastCheck(force, onlyId).finally(() => {
+      this.podcastCheckRunning = null;
+    });
+    this.podcastCheckRunning = run;
+    return run;
+  }
+  async runPodcastCheck(force, onlyId) {
+    const due = this.settings.podcastSubscriptions.filter((entry) => (!onlyId || entry.id === onlyId) && (force || Date.now() - (entry.lastChecked || 0) > PODCAST_CHECK_INTERVAL));
+    if (!due.length) return 0;
+    let added = 0;
+    const names = [];
+    for (const subscription of due) {
+      const source = this.settings.sources.find((entry) => entry.id === subscription.sourceId && entry.kind === "podlink") || this.settings.sources.find((entry) => entry.kind === "podlink");
+      if (!source) continue;
+      try {
+        const episodes = await fetchShowEpisodes(subscription);
+        const seen = new Set(subscription.seen);
+        const fresh = episodes.filter((episode) => episode.key && !seen.has(episode.key)).slice(0, PODCAST_MAX_NEW_PER_CHECK).reverse();
+        for (const episode of fresh) {
+          if (!this.findPodcastEpisodeNote(source, episode)) {
+            await this.writePodcastEpisodeNote(source, episode);
+            added += 1;
+            if (!names.includes(subscription.title)) names.push(subscription.title);
+          }
+        }
+        subscription.seen = [...episodes.map((episode) => episode.key), ...subscription.seen].filter((key, index, list) => key && list.indexOf(key) === index).slice(0, PODCAST_SEEN_LIMIT);
+        if (!subscription.cover && episodes[0]?.cover) subscription.cover = episodes[0].cover;
+      } catch (error) {
+        console.warn(`[Content Library] Checking ${subscription.title} failed`, error);
+      }
+      subscription.lastChecked = Date.now();
+    }
+    await this.saveSettings(false);
+    if (added) {
+      new import_obsidian9.Notice(t("\u64AD\u5BA2\u66F4\u65B0\uFF1A{shows} \u6709 {count} \u671F\u65B0\u8282\u76EE", { shows: names.join("\u3001"), count: added }), 6e3);
+      this.refreshViews();
+    }
+    return added;
   }
   /** Moves a music collection note to the trash (recoverable) and forgets its cached snapshot. */
   async deleteMusicPlaylistNote(file, url) {
