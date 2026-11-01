@@ -2366,3 +2366,16 @@
   .cld-root.has-ai .cld-related-links { grid-column: 1; }
   .cld-root.has-ai .cld-note-panel { grid-column: 1; grid-row: auto; position: static; }
 }
+
+/* Podcast page with the AI drawer open: the drawer takes the player's column and
+   the compact player at the bottom takes over while something is playing. */
+.cld-root.has-ai .cld-layout.is-podcast > .cld-side-player { display: none; }
+.cld-root.has-ai .cld-layout.is-podcast ~ .cld-mini-player { display: flex; }
+@container content-library (min-width: 761px) {
+  .cld-root.has-ai .cld-layout.is-podcast { grid-template-columns: 170px minmax(0, 1fr); }
+}
+
+/* Readable secondary text in the drawer (Obsidian's faint grey vanishes on glass). */
+.cld-ai-drawer .cld-ai-empty p,
+.cld-ai-drawer .cld-ai-muted { color: var(--cld-muted); }
+.cld-ai-drawer .cld-ai-warn { color: color-mix(in srgb, var(--cld-hl) 80%, var(--cld-ink)); }
