@@ -100,7 +100,7 @@ export class AIChatPanel extends Component {
     const header = root.createDiv({ cls: "cld-ai-header" });
     const titleRow = header.createDiv({ cls: "cld-ai-title-row" });
     const title = titleRow.createDiv({ cls: "cld-ai-title" });
-    setIcon(title.createSpan({ cls: "cld-ai-title-icon" }), "sparkles");
+    setIcon(title.createSpan({ cls: "cld-ai-title-icon" }), "messages-square");
     title.createSpan({ text: t("AI 对话") });
     const actions = titleRow.createDiv({ cls: "cld-ai-actions" });
     const tabs = header.createDiv({ cls: "cld-ai-tabs" });
@@ -596,7 +596,7 @@ export class AIChatView extends ItemView {
   }
 
   override getIcon(): string {
-    return "sparkles";
+    return "messages-square";
   }
 
   override async onOpen(): Promise<void> {

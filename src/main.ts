@@ -88,7 +88,7 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
       (leaf) => new ContentLibraryView(leaf, this),
     );
     this.registerView(AI_CHAT_VIEW_TYPE, (leaf) => new AIChatView(leaf, this));
-    this.addRibbonIcon("sparkles", t("AI 对话"), () => {
+    this.addRibbonIcon("messages-square", t("AI 对话"), () => {
       void this.activateAIChat();
     });
     this.addCommand({

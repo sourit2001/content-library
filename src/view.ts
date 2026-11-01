@@ -90,7 +90,7 @@ export class ContentLibraryView extends ItemView {
   }
 
   private aiToggleButton(parent: HTMLElement): void {
-    const button = this.iconButton(parent, "sparkles", t("AI 对话"));
+    const button = this.iconButton(parent, "messages-square", t("AI 对话"));
     button.addClass("cld-ai-toggle");
     button.toggleClass("is-active", this.aiOpen);
     button.addEventListener("click", () => this.toggleAI());

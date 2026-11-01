@@ -2965,7 +2965,7 @@ var AIChatPanel = class extends import_obsidian7.Component {
     const header = root.createDiv({ cls: "cld-ai-header" });
     const titleRow = header.createDiv({ cls: "cld-ai-title-row" });
     const title = titleRow.createDiv({ cls: "cld-ai-title" });
-    (0, import_obsidian7.setIcon)(title.createSpan({ cls: "cld-ai-title-icon" }), "sparkles");
+    (0, import_obsidian7.setIcon)(title.createSpan({ cls: "cld-ai-title-icon" }), "messages-square");
     title.createSpan({ text: t("AI \u5BF9\u8BDD") });
     const actions = titleRow.createDiv({ cls: "cld-ai-actions" });
     const tabs = header.createDiv({ cls: "cld-ai-tabs" });
@@ -3425,7 +3425,7 @@ var AIChatView = class extends import_obsidian7.ItemView {
     return t("AI \u5BF9\u8BDD");
   }
   getIcon() {
-    return "sparkles";
+    return "messages-square";
   }
   async onOpen() {
     this.contentEl.empty();
@@ -3505,7 +3505,7 @@ var ContentLibraryView = class _ContentLibraryView extends import_obsidian8.Item
     this.aiDrawer.style.height = `${height}px`;
   }
   aiToggleButton(parent) {
-    const button = this.iconButton(parent, "sparkles", t("AI \u5BF9\u8BDD"));
+    const button = this.iconButton(parent, "messages-square", t("AI \u5BF9\u8BDD"));
     button.addClass("cld-ai-toggle");
     button.toggleClass("is-active", this.aiOpen);
     button.addEventListener("click", () => this.toggleAI());
@@ -6677,7 +6677,7 @@ var ContentLibraryDashboardPlugin = class extends import_obsidian9.Plugin {
       (leaf) => new ContentLibraryView(leaf, this)
     );
     this.registerView(AI_CHAT_VIEW_TYPE, (leaf) => new AIChatView(leaf, this));
-    this.addRibbonIcon("sparkles", t("AI \u5BF9\u8BDD"), () => {
+    this.addRibbonIcon("messages-square", t("AI \u5BF9\u8BDD"), () => {
       void this.activateAIChat();
     });
     this.addCommand({
