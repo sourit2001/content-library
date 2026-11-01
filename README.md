@@ -20,6 +20,8 @@ An independent Obsidian dashboard for books, podcasts, web clips, X briefs, cust
 - Lets every source folder and content item use a local or remote custom cover.
 - Places card titles consistently at the top and shows text previews directly below titles when no cover is available.
 - Available in English and Simplified Chinese (简体中文); follows Obsidian's language by default.
+- AI chat drawer: talk to Claude, Codex, Grok or DeepSeek beside the note you're reading, in the same glass style as the dashboard.
+- Podcast links: paste Apple Podcasts, Xiaoyuzhou or Spotify links, follow shows and get new episodes automatically.
 
 ## Getting started
 
@@ -95,6 +97,25 @@ In the theme pack store these packs are marked **Ambient sound**.
 
 All sounds are CC0 recordings from Freesound — see [`packs/README.md`](packs/README.md#ambient-sounds).
 
+### AI chat / AI 对话
+
+Click the chat button in the dashboard's top bar (or in the reader) to open the
+AI drawer. It sits beside your note and can include the note you're reading.
+
+- **Claude, Codex, Grok** run the official command-line tools you have installed
+  and signed in to on this computer (Claude Code, Codex CLI, Grok CLI), so chats
+  use your own account and plan. The plugin never reads or stores your sign-in.
+  Desktop only.
+- **DeepSeek** uses your own API key, entered in settings.
+- The AI can read your vault but cannot change notes. Each chat is saved as a
+  Markdown note in the `AI 对话` folder.
+- If Claude Code reports `403 Request not allowed`, it isn't going through your
+  VPN; set **Proxy** in the plugin settings (for example `http://127.0.0.1:7890`).
+
+点仪表盘顶部（或阅读页）的对话按钮打开 AI 抽屉，可以边看笔记边问。Claude、Codex、Grok
+调用你电脑上已登录的官方命令行工具，用你自己的账号额度；DeepSeek 填自己的 API Key。
+AI 只读你的库，不会改笔记，每段对话自动保存到「AI 对话」文件夹。
+
 ### Support the author / 支持作者
 
 The plugin and every theme pack are free. If it helps you, the **Support the
@@ -109,6 +130,10 @@ The plugin only connects to the network for features you use:
   ambient sounds from this GitHub repository through `cdn.jsdelivr.net` and
   `raw.githubusercontent.com`.
 - **Music and web previews**: fetches playlist and link metadata you add.
+- **Podcast links**: fetches episode pages and the feeds of shows you follow
+  (checked at startup and every 3 hours).
+- **AI chat**: Claude, Codex and Grok go through the CLIs on your computer, which
+  talk to their own services; DeepSeek calls `api.deepseek.com` with your key.
 
 No telemetry or analytics are collected.
 
