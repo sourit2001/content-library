@@ -5098,6 +5098,7 @@ var ContentLibraryView = class _ContentLibraryView extends import_obsidian8.Item
     const updatePlayButton = () => {
       (0, import_obsidian8.setIcon)(play, audio.paused ? "play" : "pause");
       play.setAttr("aria-label", audio.paused ? t("\u64AD\u653E") : t("\u6682\u505C"));
+      play.toggleClass("is-playing", !audio.paused);
     };
     audio.addEventListener("play", () => {
       if (this.audio && this.audio !== audio) this.audio.pause();

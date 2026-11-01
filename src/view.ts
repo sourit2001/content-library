@@ -1945,6 +1945,7 @@ export class ContentLibraryView extends ItemView {
     const updatePlayButton = () => {
       setIcon(play, audio.paused ? "play" : "pause");
       play.setAttr("aria-label", audio.paused ? t("播放") : t("暂停"));
+      play.toggleClass("is-playing", !audio.paused);
     };
     audio.addEventListener("play", () => {
       if (this.audio && this.audio !== audio) this.audio.pause();

@@ -1291,9 +1291,39 @@
 .cld-reading-audio small { color: var(--cld-muted); }
 .cld-reading-audio strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cld-reading-audio-controls { display: grid; grid-template-columns: 42px minmax(0, 1fr) max-content; align-items: center; gap: 12px; min-width: 0; width: 100%; }
-.workspace-leaf-content[data-type="content-library-dashboard-view"] .cld-root button.cld-reading-audio-play { display: grid; width: 42px; height: 42px; min-height: 42px; padding: 0; place-items: center; border: 1px solid color-mix(in srgb, var(--cld-ink) 20%, transparent); border-radius: 50%; background-color: color-mix(in srgb, #000 58%, var(--cld-card)) !important; color: var(--cld-card) !important; -webkit-text-fill-color: var(--cld-card) !important; box-shadow: 0 5px 13px color-mix(in srgb, #000 26%, transparent), inset 0 1px 0 color-mix(in srgb, #fff 10%, transparent); }
-.workspace-leaf-content[data-type="content-library-dashboard-view"] .cld-root button.cld-reading-audio-play:hover { background-color: color-mix(in srgb, #000 72%, var(--cld-card)) !important; transform: none; }
-.cld-reading-audio-play svg { width: 18px; height: 18px; color: currentColor; stroke: currentColor; }
+.workspace-leaf-content[data-type="content-library-dashboard-view"] .cld-root button.cld-reading-audio-play {
+  --cld-play-color: var(--cld-accent, color-mix(in srgb, var(--cld-tone-a) 80%, var(--cld-ink)));
+  position: relative;
+  display: grid;
+  width: 42px;
+  height: 42px;
+  min-height: 42px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background-color: var(--cld-play-color) !important;
+  color: color-mix(in srgb, #000 82%, var(--cld-play-color)) !important;
+  -webkit-text-fill-color: currentColor !important;
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--cld-play-color) 38%, transparent), inset 0 1px 0 rgb(255 255 255 / 35%);
+  transition: transform 120ms ease, filter 120ms ease;
+}
+.workspace-leaf-content[data-type="content-library-dashboard-view"] .cld-root button.cld-reading-audio-play:hover { filter: brightness(1.08); transform: scale(1.04); }
+/* Playing: a soft ring pulses around the button so the state reads at a glance. */
+.workspace-leaf-content[data-type="content-library-dashboard-view"] .cld-root button.cld-reading-audio-play.is-playing::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--cld-play-color) 70%, transparent);
+  animation: cld-play-pulse 1.6s ease-out infinite;
+  pointer-events: none;
+}
+@keyframes cld-play-pulse {
+  0% { opacity: 0.9; transform: scale(0.92); }
+  100% { opacity: 0; transform: scale(1.25); }
+}
+.cld-reading-audio-play svg { width: 18px; height: 18px; color: currentColor; stroke: currentColor; fill: currentColor; }
 .workspace-leaf-content[data-type="content-library-dashboard-view"] .cld-root .cld-reading-audio-controls > input.cld-audio-range { display: block; width: 100% !important; min-width: 0 !important; max-width: none !important; inline-size: 100% !important; box-sizing: border-box !important; appearance: none !important; -webkit-appearance: none !important; background: transparent !important; }
 .workspace-leaf-content[data-type="content-library-dashboard-view"] .cld-root .cld-reading-audio-controls > input.cld-audio-range::-webkit-slider-runnable-track { height: 6px; border-radius: 99px; background: linear-gradient(to right, color-mix(in srgb, var(--cld-a) 82%, var(--cld-card)) 0 var(--cld-audio-progress, 0%), color-mix(in srgb, var(--cld-ink) 15%, transparent) var(--cld-audio-progress, 0%) 100%) !important; }
 .workspace-leaf-content[data-type="content-library-dashboard-view"] .cld-root .cld-reading-audio-controls > input.cld-audio-range::-webkit-slider-thumb { width: 14px; height: 14px; margin-top: -4px; border: 2px solid var(--cld-card); border-radius: 50%; background: color-mix(in srgb, var(--cld-a) 86%, #000) !important; box-shadow: 0 2px 7px color-mix(in srgb, #000 28%, transparent); transform: translateY(7px); -webkit-appearance: none; }
