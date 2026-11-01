@@ -2348,3 +2348,21 @@
   border-color: transparent;
   color: var(--cld-bg);
 }
+
+/* Wide Markdown tables scroll inside the article instead of running under the note panel. */
+.cld-reading-page table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+.cld-reading-page :is(pre, img, iframe, video) { max-width: 100%; }
+.cld-reading-page pre { overflow-x: auto; }
+
+/* Reader narrowed by the AI drawer: the note panel drops under the article. */
+@container content-library (max-width: 1150px) {
+  .cld-root.has-ai .cld-reader-grid { grid-template-columns: minmax(0, 1fr); }
+  .cld-root.has-ai .cld-reading-page { grid-column: 1; grid-row: auto; }
+  .cld-root.has-ai .cld-related-links { grid-column: 1; }
+  .cld-root.has-ai .cld-note-panel { grid-column: 1; grid-row: auto; position: static; }
+}
