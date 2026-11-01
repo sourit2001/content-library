@@ -89,9 +89,8 @@ export class ContentLibraryView extends ItemView {
   }
 
   private aiToggleButton(parent: HTMLElement): void {
-    const button = parent.createEl("button", { cls: "cld-ai-toggle", attr: { type: "button", "aria-label": t("AI 对话") } });
-    setIcon(button.createSpan(), "sparkles");
-    button.createSpan({ text: "AI" });
+    const button = this.iconButton(parent, "sparkles", t("AI 对话"));
+    button.addClass("cld-ai-toggle");
     button.toggleClass("is-active", this.aiOpen);
     button.addEventListener("click", () => this.toggleAI());
   }
@@ -196,7 +195,10 @@ export class ContentLibraryView extends ItemView {
     if (pack) this.plugin.packs.applyToElement(shell, pack);
     const podcastHome = !this.detailOpen && this.isPodcastMode();
     const musicHome = !this.detailOpen && this.isMusicMode();
-    const layout = shell.createDiv({ cls: `cld-layout${this.detailOpen ? " is-detail" : ""}${podcastHome ? " is-podcast" : ""}${musicHome ? " is-music" : ""}` });
+    // The layout gets its own size container so its responsive rules follow the space
+    // actually left beside the AI drawer, not the whole window.
+    const area = shell.createDiv({ cls: "cld-layout-area" });
+    const layout = area.createDiv({ cls: `cld-layout${this.detailOpen ? " is-detail" : ""}${podcastHome ? " is-podcast" : ""}${musicHome ? " is-music" : ""}` });
     this.renderSidebar(layout);
     const main = layout.createEl("main", { cls: "cld-main" });
     if (this.detailOpen && this.selected) await this.renderDetail(main, this.selected);
@@ -2469,7 +2471,7 @@ export class ContentLibraryView extends ItemView {
   }
 
   private renderMiniPlayer(item: ContentItem): void {
-    const host = this.contentEl.querySelector<HTMLElement>(".cld-root");
+    const host = this.contentEl.querySelector<HTMLElement>(".cld-layout-area") ?? this.contentEl.querySelector<HTMLElement>(".cld-root");
     const existing = host?.querySelector<HTMLElement>(".cld-mini-player");
     if (!host || this.detailOpen) {
       existing?.remove();

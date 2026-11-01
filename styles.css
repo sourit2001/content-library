@@ -2125,7 +2125,13 @@
   gap: 14px;
   overflow: clip; /* keeps the rounded corners but lets the drawer stay sticky */
 }
-.cld-root.has-ai > .cld-layout { flex: 1 1 auto; min-width: 0; }
+.cld-layout-area { container: content-library / inline-size; min-width: 0; }
+.cld-root.has-ai > .cld-layout-area { flex: 1 1 auto; }
+/* With the drawer open it takes the place of the right-hand detail column. */
+.cld-root.has-ai .cld-layout > .cld-inspector:not(.cld-side-player) { display: none; }
+@container content-library (min-width: 761px) {
+  .cld-root.has-ai .cld-layout:not(.is-detail, .is-podcast) { grid-template-columns: 170px minmax(0, 1fr); }
+}
 
 .cld-ai-drawer {
   --cld-hl: var(--cld-accent, color-mix(in srgb, var(--cld-tone-a) 75%, var(--cld-ink)));
@@ -2304,23 +2310,10 @@
 }
 .cld-ai-drawer .cld-ai-send svg { width: 16px; height: 16px; }
 
-/* AI toggle in the dashboard top bar and reader toolbar */
+/* AI toggle: same round glass button as its neighbours */
 .cld-detail-toolbar-end { display: inline-flex; align-items: center; gap: 8px; }
-.cld-root button.cld-ai-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 34px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--cld-ink) 13%, transparent);
-  background: color-mix(in srgb, var(--cld-card) 74%, transparent);
-  color: var(--cld-ink);
-  font-size: 13px;
-  font-weight: 650;
-}
-.cld-root button.cld-ai-toggle svg { width: 15px; height: 15px; }
-.workspace-leaf-content[data-type="content-library-dashboard-view"] .cld-root button.cld-ai-toggle.is-active {
+.cld-icon-button.cld-ai-toggle svg { width: 17px; height: 17px; }
+.workspace-leaf-content[data-type="content-library-dashboard-view"] .cld-root button.cld-icon-button.cld-ai-toggle.is-active {
   background: var(--cld-accent, color-mix(in srgb, var(--cld-tone-a) 75%, var(--cld-ink)));
   border-color: transparent;
   color: var(--cld-bg);

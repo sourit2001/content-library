@@ -3356,9 +3356,8 @@ var ContentLibraryView = class _ContentLibraryView extends import_obsidian8.Item
     this.aiDrawer.style.height = `${height}px`;
   }
   aiToggleButton(parent) {
-    const button = parent.createEl("button", { cls: "cld-ai-toggle", attr: { type: "button", "aria-label": t("AI \u5BF9\u8BDD") } });
-    (0, import_obsidian8.setIcon)(button.createSpan(), "sparkles");
-    button.createSpan({ text: "AI" });
+    const button = this.iconButton(parent, "sparkles", t("AI \u5BF9\u8BDD"));
+    button.addClass("cld-ai-toggle");
     button.toggleClass("is-active", this.aiOpen);
     button.addEventListener("click", () => this.toggleAI());
   }
@@ -3451,7 +3450,8 @@ var ContentLibraryView = class _ContentLibraryView extends import_obsidian8.Item
     if (pack) this.plugin.packs.applyToElement(shell, pack);
     const podcastHome = !this.detailOpen && this.isPodcastMode();
     const musicHome = !this.detailOpen && this.isMusicMode();
-    const layout = shell.createDiv({ cls: `cld-layout${this.detailOpen ? " is-detail" : ""}${podcastHome ? " is-podcast" : ""}${musicHome ? " is-music" : ""}` });
+    const area = shell.createDiv({ cls: "cld-layout-area" });
+    const layout = area.createDiv({ cls: `cld-layout${this.detailOpen ? " is-detail" : ""}${podcastHome ? " is-podcast" : ""}${musicHome ? " is-music" : ""}` });
     this.renderSidebar(layout);
     const main = layout.createEl("main", { cls: "cld-main" });
     if (this.detailOpen && this.selected) await this.renderDetail(main, this.selected);
@@ -5609,7 +5609,7 @@ var ContentLibraryView = class _ContentLibraryView extends import_obsidian8.Item
     });
   }
   renderMiniPlayer(item) {
-    const host = this.contentEl.querySelector(".cld-root");
+    const host = this.contentEl.querySelector(".cld-layout-area") ?? this.contentEl.querySelector(".cld-root");
     const existing = host?.querySelector(".cld-mini-player");
     if (!host || this.detailOpen) {
       existing?.remove();
