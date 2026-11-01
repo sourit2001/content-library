@@ -86,7 +86,7 @@ export class ContentLibraryView extends ItemView {
   private sizeAIDrawer(): void {
     if (!this.aiDrawer) return;
     const height = Math.max(320, this.contentEl.clientHeight - 32);
-    this.aiDrawer.style.height = `${height}px`;
+    this.aiDrawer.setCssStyles({ height: `${height}px` });
   }
 
   private aiToggleButton(parent: HTMLElement): void {
@@ -1135,10 +1135,7 @@ export class ContentLibraryView extends ItemView {
     const maxTop = Math.max(0, this.containerEl.clientHeight - dock.offsetHeight);
     const x = Math.min(maxLeft, Math.max(0, left));
     const y = Math.min(maxTop, Math.max(0, top));
-    dock.style.left = `${x}px`;
-    dock.style.top = `${y}px`;
-    dock.style.right = "auto";
-    dock.style.bottom = "auto";
+    dock.setCssStyles({ left: `${x}px`, top: `${y}px`, right: "auto", bottom: "auto" });
     this.youTubeDockPosition = { left: x, top: y };
   }
 
