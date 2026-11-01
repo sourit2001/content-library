@@ -500,4 +500,12 @@ export const EN: Record<string, string> = {
   "{count} 分钟前": "{count} min ago",
   "{count} 小时前": "{count} h ago",
   "{count} 天前": "{count} d ago",
+  "开始一段新的对话，不接着之前的聊": "Start a fresh chat that doesn't continue the previous one",
+  "左边没有打开的笔记": "No note open on the left",
+  "不附带笔记": "No note attached",
+  "点击附带": "click to attach",
+  "已附带，点击取消": "attached, click to remove",
+  "打开一篇就会附带": "open one to attach it",
+  "点击后，发送时会附带左边打开的笔记": "Click to send the note open on the left with your message",
+  "发送时会附带这篇笔记，点击取消": "This note will be sent with your message; click to remove",
 };

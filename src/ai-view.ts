@@ -112,7 +112,10 @@ export class AIChatPanel extends Component {
       tab.createSpan({ cls: `cld-ai-dot is-${state}`, attr: { "data-provider": provider.id } });
       tab.addEventListener("click", () => this.switchProvider(provider.id));
     }
-    this.iconButton(actions, "plus", t("新对话"), () => this.newConversation());
+    const fresh = actions.createEl("button", { cls: "cld-ai-new", attr: { "aria-label": t("开始一段新的对话，不接着之前的聊") } });
+    setIcon(fresh.createSpan(), "square-pen");
+    fresh.createSpan({ text: t("新对话") });
+    fresh.addEventListener("click", () => this.newConversation());
     this.iconButton(actions, "history", t("历史对话"), () => {
       this.showHistory = !this.showHistory;
       this.render();
@@ -135,12 +138,11 @@ export class AIChatPanel extends Component {
     const composer = root.createDiv({ cls: "cld-ai-composer" });
     const tools = composer.createDiv({ cls: "cld-ai-composer-tools" });
     const attach = tools.createEl("button", { cls: "cld-ai-chip" });
-    setIcon(attach.createSpan(), "paperclip");
-    attach.createSpan({ cls: "cld-ai-chip-label", text: t("附带当前笔记") });
-    attach.toggleClass("is-active", this.attachNote);
+    attach.createSpan({ cls: "cld-ai-chip-icon" });
+    attach.createSpan({ cls: "cld-ai-chip-label" });
+    attach.createSpan({ cls: "cld-ai-chip-state" });
     attach.addEventListener("click", async () => {
       this.attachNote = !this.attachNote;
-      attach.toggleClass("is-active", this.attachNote);
       this.updateAttachLabel();
       this.plugin.settings.aiAttachActiveNote = this.attachNote;
       await this.plugin.saveSettings(false);
@@ -189,12 +191,37 @@ export class AIChatPanel extends Component {
     return file;
   }
 
+  /** Three clear states: off, on with a note, on but nothing open on the left. */
   private updateAttachLabel(): void {
-    const label = this.contentEl.querySelector(".cld-ai-chip .cld-ai-chip-label");
-    if (!label) return;
+    const chip = this.contentEl.querySelector<HTMLElement>(".cld-ai-chip");
+    if (!chip) return;
     const note = this.attachNote ? this.currentNote() : null;
-    const next = note ? t("附带：{name}", { name: note.basename }) : t("附带当前笔记");
-    if (label.textContent !== next) label.textContent = next;
+    const state = !this.attachNote ? "off" : note ? "on" : "missing";
+    if (chip.dataset.state === state && chip.dataset.note === (note?.path ?? "")) return;
+    chip.dataset.state = state;
+    chip.dataset.note = note?.path ?? "";
+    chip.toggleClass("is-active", state === "on");
+    chip.toggleClass("is-missing", state === "missing");
+    const icon = chip.querySelector<HTMLElement>(".cld-ai-chip-icon");
+    if (icon) {
+      icon.empty();
+      setIcon(icon, state === "on" ? "file-check-2" : state === "missing" ? "file-question" : "file-plus-2");
+    }
+    const label = chip.querySelector(".cld-ai-chip-label");
+    if (label) label.textContent = state === "on" ? note!.basename : state === "missing" ? t("左边没有打开的笔记") : t("不附带笔记");
+    const flag = chip.querySelector(".cld-ai-chip-state");
+    if (flag) flag.textContent = state === "off" ? t("点击附带") : state === "missing" ? t("打开一篇就会附带") : t("已附带，点击取消");
+    chip.setAttr("aria-label", state === "off" ? t("点击后，发送时会附带左边打开的笔记") : t("发送时会附带这篇笔记，点击取消"));
+  }
+
+  /** Scroll position of the message list, kept when the dashboard re-renders around the drawer. */
+  getScroll(): number | null {
+    return this.messagesEl?.isConnected ? this.messagesEl.scrollTop : null;
+  }
+
+  setScroll(top: number | null): void {
+    if (top === null || !this.messagesEl) return;
+    this.messagesEl.scrollTop = top;
   }
 
   private iconButton(parent: HTMLElement, icon: string, label: string, onClick: () => void): HTMLElement {
@@ -279,6 +306,11 @@ export class AIChatPanel extends Component {
     const bubble = wrap.createDiv({ cls: "cld-ai-bubble" });
     if (message.role === "user") {
       bubble.setText(message.text);
+      if (message.attached) {
+        const tag = wrap.createDiv({ cls: "cld-ai-attached" });
+        setIcon(tag.createSpan(), "file-text");
+        tag.createSpan({ text: t("附带：{name}", { name: message.attached }) });
+      }
     } else {
       if (prerendered) bubble.append(...Array.from(prerendered.childNodes));
       else void MarkdownRenderer.render(this.app, message.text, bubble, this.conversation.file?.path ?? "", this);
@@ -407,16 +439,18 @@ export class AIChatPanel extends Component {
     const conversation = this.conversation;
     const history = conversation.messages.slice();
     let prompt = text;
+    let attachedName: string | undefined;
     if (this.attachNote) {
       const note = this.currentNote();
       if (note) {
+        attachedName = note.basename;
         const content = await this.app.vault.cachedRead(note);
         prompt = `${text}\n\n---\n${t("当前笔记")}：${note.path}\n\n${content.slice(0, 30000)}`;
       } else {
         new Notice(t("左边没有打开的笔记，这条消息不会附带笔记。"));
       }
     }
-    const userMessage: AIMessage = { role: "user", text, time: Date.now() };
+    const userMessage: AIMessage = { role: "user", text, time: Date.now(), attached: attachedName };
     conversation.messages.push(userMessage);
     this.inputEl.value = "";
     if (this.messagesEl.querySelector(".cld-ai-empty")) this.messagesEl.empty();

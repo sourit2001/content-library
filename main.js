@@ -528,7 +528,15 @@ var EN = {
   "\u521A\u521A": "just now",
   "{count} \u5206\u949F\u524D": "{count} min ago",
   "{count} \u5C0F\u65F6\u524D": "{count} h ago",
-  "{count} \u5929\u524D": "{count} d ago"
+  "{count} \u5929\u524D": "{count} d ago",
+  "\u5F00\u59CB\u4E00\u6BB5\u65B0\u7684\u5BF9\u8BDD\uFF0C\u4E0D\u63A5\u7740\u4E4B\u524D\u7684\u804A": "Start a fresh chat that doesn't continue the previous one",
+  "\u5DE6\u8FB9\u6CA1\u6709\u6253\u5F00\u7684\u7B14\u8BB0": "No note open on the left",
+  "\u4E0D\u9644\u5E26\u7B14\u8BB0": "No note attached",
+  "\u70B9\u51FB\u9644\u5E26": "click to attach",
+  "\u5DF2\u9644\u5E26\uFF0C\u70B9\u51FB\u53D6\u6D88": "attached, click to remove",
+  "\u6253\u5F00\u4E00\u7BC7\u5C31\u4F1A\u9644\u5E26": "open one to attach it",
+  "\u70B9\u51FB\u540E\uFF0C\u53D1\u9001\u65F6\u4F1A\u9644\u5E26\u5DE6\u8FB9\u6253\u5F00\u7684\u7B14\u8BB0": "Click to send the note open on the left with your message",
+  "\u53D1\u9001\u65F6\u4F1A\u9644\u5E26\u8FD9\u7BC7\u7B14\u8BB0\uFF0C\u70B9\u51FB\u53D6\u6D88": "This note will be sent with your message; click to remove"
 };
 
 // src/i18n.ts
@@ -2976,7 +2984,10 @@ var AIChatPanel = class extends import_obsidian7.Component {
       tab.createSpan({ cls: `cld-ai-dot is-${state}`, attr: { "data-provider": provider.id } });
       tab.addEventListener("click", () => this.switchProvider(provider.id));
     }
-    this.iconButton(actions, "plus", t("\u65B0\u5BF9\u8BDD"), () => this.newConversation());
+    const fresh = actions.createEl("button", { cls: "cld-ai-new", attr: { "aria-label": t("\u5F00\u59CB\u4E00\u6BB5\u65B0\u7684\u5BF9\u8BDD\uFF0C\u4E0D\u63A5\u7740\u4E4B\u524D\u7684\u804A") } });
+    (0, import_obsidian7.setIcon)(fresh.createSpan(), "square-pen");
+    fresh.createSpan({ text: t("\u65B0\u5BF9\u8BDD") });
+    fresh.addEventListener("click", () => this.newConversation());
     this.iconButton(actions, "history", t("\u5386\u53F2\u5BF9\u8BDD"), () => {
       this.showHistory = !this.showHistory;
       this.render();
@@ -2997,12 +3008,11 @@ var AIChatPanel = class extends import_obsidian7.Component {
     const composer = root.createDiv({ cls: "cld-ai-composer" });
     const tools = composer.createDiv({ cls: "cld-ai-composer-tools" });
     const attach = tools.createEl("button", { cls: "cld-ai-chip" });
-    (0, import_obsidian7.setIcon)(attach.createSpan(), "paperclip");
-    attach.createSpan({ cls: "cld-ai-chip-label", text: t("\u9644\u5E26\u5F53\u524D\u7B14\u8BB0") });
-    attach.toggleClass("is-active", this.attachNote);
+    attach.createSpan({ cls: "cld-ai-chip-icon" });
+    attach.createSpan({ cls: "cld-ai-chip-label" });
+    attach.createSpan({ cls: "cld-ai-chip-state" });
     attach.addEventListener("click", async () => {
       this.attachNote = !this.attachNote;
-      attach.toggleClass("is-active", this.attachNote);
       this.updateAttachLabel();
       this.plugin.settings.aiAttachActiveNote = this.attachNote;
       await this.plugin.saveSettings(false);
@@ -3048,12 +3058,35 @@ var AIChatPanel = class extends import_obsidian7.Component {
     if (file.path.startsWith((0, import_obsidian7.normalizePath)(this.plugin.settings.aiChatFolder) + "/")) return null;
     return file;
   }
+  /** Three clear states: off, on with a note, on but nothing open on the left. */
   updateAttachLabel() {
-    const label = this.contentEl.querySelector(".cld-ai-chip .cld-ai-chip-label");
-    if (!label) return;
+    const chip = this.contentEl.querySelector(".cld-ai-chip");
+    if (!chip) return;
     const note = this.attachNote ? this.currentNote() : null;
-    const next = note ? t("\u9644\u5E26\uFF1A{name}", { name: note.basename }) : t("\u9644\u5E26\u5F53\u524D\u7B14\u8BB0");
-    if (label.textContent !== next) label.textContent = next;
+    const state = !this.attachNote ? "off" : note ? "on" : "missing";
+    if (chip.dataset.state === state && chip.dataset.note === (note?.path ?? "")) return;
+    chip.dataset.state = state;
+    chip.dataset.note = note?.path ?? "";
+    chip.toggleClass("is-active", state === "on");
+    chip.toggleClass("is-missing", state === "missing");
+    const icon = chip.querySelector(".cld-ai-chip-icon");
+    if (icon) {
+      icon.empty();
+      (0, import_obsidian7.setIcon)(icon, state === "on" ? "file-check-2" : state === "missing" ? "file-question" : "file-plus-2");
+    }
+    const label = chip.querySelector(".cld-ai-chip-label");
+    if (label) label.textContent = state === "on" ? note.basename : state === "missing" ? t("\u5DE6\u8FB9\u6CA1\u6709\u6253\u5F00\u7684\u7B14\u8BB0") : t("\u4E0D\u9644\u5E26\u7B14\u8BB0");
+    const flag = chip.querySelector(".cld-ai-chip-state");
+    if (flag) flag.textContent = state === "off" ? t("\u70B9\u51FB\u9644\u5E26") : state === "missing" ? t("\u6253\u5F00\u4E00\u7BC7\u5C31\u4F1A\u9644\u5E26") : t("\u5DF2\u9644\u5E26\uFF0C\u70B9\u51FB\u53D6\u6D88");
+    chip.setAttr("aria-label", state === "off" ? t("\u70B9\u51FB\u540E\uFF0C\u53D1\u9001\u65F6\u4F1A\u9644\u5E26\u5DE6\u8FB9\u6253\u5F00\u7684\u7B14\u8BB0") : t("\u53D1\u9001\u65F6\u4F1A\u9644\u5E26\u8FD9\u7BC7\u7B14\u8BB0\uFF0C\u70B9\u51FB\u53D6\u6D88"));
+  }
+  /** Scroll position of the message list, kept when the dashboard re-renders around the drawer. */
+  getScroll() {
+    return this.messagesEl?.isConnected ? this.messagesEl.scrollTop : null;
+  }
+  setScroll(top) {
+    if (top === null || !this.messagesEl) return;
+    this.messagesEl.scrollTop = top;
   }
   iconButton(parent, icon, label, onClick) {
     const button = parent.createEl("button", { cls: "cld-ai-icon clickable-icon", attr: { "aria-label": label } });
@@ -3131,6 +3164,11 @@ var AIChatPanel = class extends import_obsidian7.Component {
     const bubble = wrap.createDiv({ cls: "cld-ai-bubble" });
     if (message.role === "user") {
       bubble.setText(message.text);
+      if (message.attached) {
+        const tag = wrap.createDiv({ cls: "cld-ai-attached" });
+        (0, import_obsidian7.setIcon)(tag.createSpan(), "file-text");
+        tag.createSpan({ text: t("\u9644\u5E26\uFF1A{name}", { name: message.attached }) });
+      }
     } else {
       if (prerendered) bubble.append(...Array.from(prerendered.childNodes));
       else void import_obsidian7.MarkdownRenderer.render(this.app, message.text, bubble, this.conversation.file?.path ?? "", this);
@@ -3245,9 +3283,11 @@ var AIChatPanel = class extends import_obsidian7.Component {
     const conversation = this.conversation;
     const history = conversation.messages.slice();
     let prompt = text;
+    let attachedName;
     if (this.attachNote) {
       const note = this.currentNote();
       if (note) {
+        attachedName = note.basename;
         const content = await this.app.vault.cachedRead(note);
         prompt = `${text}
 
@@ -3259,7 +3299,7 @@ ${content.slice(0, 3e4)}`;
         new import_obsidian7.Notice(t("\u5DE6\u8FB9\u6CA1\u6709\u6253\u5F00\u7684\u7B14\u8BB0\uFF0C\u8FD9\u6761\u6D88\u606F\u4E0D\u4F1A\u9644\u5E26\u7B14\u8BB0\u3002"));
       }
     }
-    const userMessage = { role: "user", text, time: Date.now() };
+    const userMessage = { role: "user", text, time: Date.now(), attached: attachedName };
     conversation.messages.push(userMessage);
     this.inputEl.value = "";
     if (this.messagesEl.querySelector(".cld-ai-empty")) this.messagesEl.empty();
@@ -3475,6 +3515,7 @@ var ContentLibraryView = class _ContentLibraryView extends import_obsidian8.Item
   aiDrawer = null;
   aiPanel = null;
   aiResize = null;
+  aiScroll = null;
   /** Open, close or toggle the AI drawer without re-rendering the dashboard. */
   toggleAI(open = !this.aiOpen) {
     this.aiOpen = open;
@@ -3498,6 +3539,8 @@ var ContentLibraryView = class _ContentLibraryView extends import_obsidian8.Item
     }
     shell.appendChild(this.aiDrawer);
     this.sizeAIDrawer();
+    this.aiPanel?.setScroll(this.aiScroll);
+    this.aiScroll = null;
   }
   sizeAIDrawer() {
     if (!this.aiDrawer) return;
@@ -3588,6 +3631,7 @@ var ContentLibraryView = class _ContentLibraryView extends import_obsidian8.Item
     this.readingScrollCleanup?.();
     this.readingScrollCleanup = null;
     const root = this.contentEl;
+    this.aiScroll = this.aiPanel?.getScroll() ?? null;
     root.empty();
     root.addClass("cld-view-content");
     const pack = this.plugin.packs.active();

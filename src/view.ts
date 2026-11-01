@@ -55,6 +55,7 @@ export class ContentLibraryView extends ItemView {
   private aiDrawer: HTMLElement | null = null;
   private aiPanel: AIChatPanel | null = null;
   private aiResize: ResizeObserver | null = null;
+  private aiScroll: number | null = null;
 
   /** Open, close or toggle the AI drawer without re-rendering the dashboard. */
   toggleAI(open = !this.aiOpen): void {
@@ -81,6 +82,8 @@ export class ContentLibraryView extends ItemView {
     }
     shell.appendChild(this.aiDrawer);
     this.sizeAIDrawer();
+    this.aiPanel?.setScroll(this.aiScroll);
+    this.aiScroll = null;
   }
 
   private sizeAIDrawer(): void {
@@ -185,6 +188,8 @@ export class ContentLibraryView extends ItemView {
     this.readingScrollCleanup?.();
     this.readingScrollCleanup = null;
     const root = this.contentEl;
+    // Moving the AI drawer to the new shell resets its scroll; remember where the chat was.
+    this.aiScroll = this.aiPanel?.getScroll() ?? null;
     root.empty();
     root.addClass("cld-view-content");
     const pack = this.plugin.packs.active();

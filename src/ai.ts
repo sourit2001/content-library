@@ -63,6 +63,8 @@ export interface AIMessage {
   role: "user" | "assistant";
   text: string;
   time: number;
+  /** Name of the note sent along with this message, if any. */
+  attached?: string;
 }
 
 export interface AIRunOptions {

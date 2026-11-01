@@ -2414,3 +2414,73 @@
 @media (hover: none) { .cld-card-delete { opacity: .85; } }
 .cld-danger-button:hover { color: var(--text-error) !important; }
 .cld-follow-option { display: flex; align-items: center; gap: 8px; color: var(--cld-muted, var(--text-muted)); font-size: var(--font-ui-small); }
+
+/* "New chat" as a clear labelled button */
+.cld-ai-new {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.cld-ai-new svg { width: 14px; height: 14px; }
+.workspace-leaf-content[data-type="content-library-dashboard-view"] .cld-root .cld-ai-drawer button.cld-ai-new {
+  border: 1px solid color-mix(in srgb, var(--cld-ink) 16%, transparent);
+  background: color-mix(in srgb, var(--cld-ink) 10%, transparent);
+  color: var(--cld-ink);
+}
+.workspace-leaf-content[data-type="content-library-dashboard-view"] .cld-root .cld-ai-drawer button.cld-ai-new:hover {
+  background: color-mix(in srgb, var(--cld-ink) 18%, transparent);
+}
+
+/* Attach-note control: off / on / nothing open, each obviously different */
+.cld-ai-chip-icon { display: inline-flex; }
+.cld-ai-chip-icon svg { width: 14px; height: 14px; }
+.cld-ai-chip-state { opacity: 0.75; font-size: 11px; }
+.cld-ai-chip-state::before { content: "·"; margin: 0 5px 0 2px; }
+.workspace-leaf-content[data-type="content-library-dashboard-view"] .cld-root .cld-ai-drawer button.cld-ai-chip {
+  height: 26px;
+  max-width: 100%;
+  padding: 0 10px;
+  border: 1px dashed color-mix(in srgb, var(--cld-ink) 30%, transparent);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--cld-muted);
+}
+.workspace-leaf-content[data-type="content-library-dashboard-view"] .cld-root .cld-ai-drawer button.cld-ai-chip.is-active {
+  border: 1px solid transparent;
+  background: var(--cld-hl);
+  color: color-mix(in srgb, #000 82%, var(--cld-hl));
+  font-weight: 600;
+}
+.workspace-leaf-content[data-type="content-library-dashboard-view"] .cld-root .cld-ai-drawer button.cld-ai-chip.is-missing {
+  border: 1px solid color-mix(in srgb, var(--cld-hl) 60%, transparent);
+  color: var(--cld-hl);
+}
+.cld-ai-chip.is-active { background: var(--interactive-accent); color: var(--text-on-accent); border-color: transparent; }
+.cld-ai-chip.is-missing { border-style: solid; color: var(--text-warning); }
+.cld-ai-drawer .cld-ai-composer-tools { flex-wrap: wrap; row-gap: 4px; }
+.cld-ai-chip-label { max-width: 170px; }
+
+/* Under a sent message: which note went with it */
+.cld-ai-attached {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 85%;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  background: var(--background-modifier-hover);
+}
+.cld-ai-attached span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cld-ai-attached svg { width: 12px; height: 12px; flex: none; }
+.cld-ai-drawer .cld-ai-attached {
+  color: var(--cld-muted);
+  background: color-mix(in srgb, var(--cld-ink) 9%, transparent);
+}
