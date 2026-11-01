@@ -2114,3 +2114,214 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ------------------------------------------------------------------ */
+/* AI drawer inside the dashboard: same glass, same palette            */
+/* ------------------------------------------------------------------ */
+
+.cld-root.has-ai {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  overflow: clip; /* keeps the rounded corners but lets the drawer stay sticky */
+}
+.cld-root.has-ai > .cld-layout { flex: 1 1 auto; min-width: 0; }
+
+.cld-ai-drawer {
+  --cld-hl: var(--cld-accent, color-mix(in srgb, var(--cld-tone-a) 75%, var(--cld-ink)));
+  position: sticky;
+  top: 0;
+  flex: none;
+  width: 380px;
+  min-width: 0;
+  padding: 14px;
+  border-radius: 26px;
+  color: var(--cld-ink);
+  overflow: hidden;
+  animation: cld-ai-slide 220ms ease-out;
+}
+.cld-ai-drawer > div { height: 100%; }
+
+@keyframes cld-ai-slide {
+  from { opacity: 0; transform: translateX(24px); }
+  to { opacity: 1; transform: none; }
+}
+
+@container content-library (max-width: 980px) {
+  .cld-ai-drawer {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 30;
+    width: min(380px, calc(100% - 24px));
+    box-shadow: 0 24px 60px rgb(0 0 0 / 30%);
+  }
+}
+
+.cld-ai-drawer .cld-ai {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.cld-ai-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.cld-ai-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 16px;
+  font-weight: 700;
+}
+.cld-ai-title-icon { display: inline-flex; color: var(--cld-hl, var(--interactive-accent)); }
+.cld-ai-title-icon svg { width: 17px; height: 17px; }
+
+/* Sidebar copy keeps Obsidian's look; only the drawer takes the dashboard look. */
+.workspace-leaf-content[data-type="content-library-ai-chat"] .cld-ai-title-row { justify-content: space-between; }
+
+.workspace-leaf-content[data-type="content-library-dashboard-view"] .cld-root .cld-ai-drawer button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.cld-ai-drawer .cld-ai-actions { gap: 4px; }
+.cld-root .cld-ai-drawer .cld-ai-icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  color: var(--cld-muted);
+}
+.cld-root .cld-ai-drawer .cld-ai-icon:hover,
+.cld-root .cld-ai-drawer .cld-ai-icon.is-active {
+  color: var(--cld-ink);
+  background: color-mix(in srgb, var(--cld-ink) 12%, transparent);
+}
+.cld-ai-drawer .cld-ai-icon svg { width: 16px; height: 16px; }
+
+.cld-ai-drawer .cld-ai-tabs {
+  background: color-mix(in srgb, var(--cld-ink) 9%, transparent);
+  border-radius: 14px;
+}
+.cld-root .cld-ai-drawer .cld-ai-tab {
+  height: 30px;
+  border-radius: 10px;
+  color: var(--cld-muted);
+  font-size: 13px;
+}
+.cld-root .cld-ai-drawer .cld-ai-tab:hover { color: var(--cld-ink); }
+.cld-root .cld-ai-drawer .cld-ai-tab.is-active {
+  background: color-mix(in srgb, var(--cld-card) 85%, transparent);
+  color: var(--cld-ink);
+  font-weight: 650;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
+}
+
+.cld-ai-drawer .cld-ai-meta { color: var(--cld-muted); }
+.cld-ai-drawer .cld-ai-bubble { font-size: 13.5px; }
+.cld-ai-drawer .cld-ai-msg.is-user .cld-ai-bubble {
+  background: color-mix(in srgb, var(--cld-hl) 34%, transparent);
+  border: 1px solid color-mix(in srgb, var(--cld-hl) 50%, transparent);
+  color: var(--cld-ink);
+}
+.cld-ai-drawer .cld-ai-msg.is-assistant .cld-ai-bubble {
+  background: color-mix(in srgb, var(--cld-card) 60%, transparent);
+  border: 1px solid color-mix(in srgb, var(--cld-ink) 10%, transparent);
+  color: var(--cld-ink);
+}
+.cld-ai-drawer .cld-ai-bubble :is(strong, b) { color: var(--cld-hl); }
+.cld-ai-drawer .cld-ai-bubble :is(h1, h2, h3, h4) { color: var(--cld-ink); font-size: 1.05em; margin: 0.6em 0 0.3em; }
+.cld-ai-drawer .cld-ai-bubble a { color: var(--cld-hl); }
+.cld-ai-drawer .cld-ai-bubble code {
+  background: color-mix(in srgb, var(--cld-ink) 10%, transparent);
+  color: var(--cld-ink);
+}
+.cld-ai-drawer .cld-ai-bubble pre {
+  background: color-mix(in srgb, var(--cld-ink) 8%, transparent);
+  border-radius: 10px;
+}
+.cld-ai-drawer .cld-ai-msg.is-error .cld-ai-bubble { color: var(--text-error); }
+
+.cld-ai-drawer .cld-ai-empty {
+  background: color-mix(in srgb, var(--cld-card) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--cld-ink) 10%, transparent);
+  color: var(--cld-muted);
+}
+.cld-ai-drawer .cld-ai-empty-title { color: var(--cld-ink); }
+.cld-ai-drawer .cld-ai-code { background: color-mix(in srgb, var(--cld-ink) 9%, transparent); }
+.cld-root .cld-ai-drawer .cld-ai-empty button {
+  margin-top: 6px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--cld-ink) 12%, transparent);
+}
+
+.cld-ai-drawer .cld-ai-history-row { color: var(--cld-ink); }
+.cld-root .cld-ai-drawer .cld-ai-history-row:hover,
+.cld-root .cld-ai-drawer .cld-ai-history-row.is-active { background: color-mix(in srgb, var(--cld-ink) 10%, transparent); }
+.cld-ai-drawer .cld-ai-history-title { color: var(--cld-ink); }
+.cld-ai-drawer .cld-ai-history-badge { background: color-mix(in srgb, var(--cld-ink) 12%, transparent); color: var(--cld-muted); }
+.cld-ai-drawer .cld-ai-history-date,
+.cld-ai-drawer .cld-ai-activity,
+.cld-ai-drawer .cld-ai-hint { color: var(--cld-muted); }
+
+.cld-ai-drawer .cld-ai-composer {
+  background: color-mix(in srgb, var(--cld-ink) 7%, transparent);
+  border: 1px solid color-mix(in srgb, var(--cld-ink) 12%, transparent);
+  border-radius: 18px;
+}
+.cld-ai-drawer .cld-ai-composer:focus-within { border-color: color-mix(in srgb, var(--cld-hl) 70%, transparent); }
+.cld-ai-drawer .cld-ai-input { color: var(--cld-ink); }
+.cld-ai-drawer .cld-ai-input::placeholder { color: var(--cld-muted); }
+.cld-root .cld-ai-drawer .cld-ai-chip {
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid color-mix(in srgb, var(--cld-ink) 16%, transparent);
+  border-radius: 999px;
+  color: var(--cld-muted);
+}
+.cld-root .cld-ai-drawer .cld-ai-chip.is-active {
+  border-color: color-mix(in srgb, var(--cld-hl) 70%, transparent);
+  color: var(--cld-hl);
+}
+.cld-root .cld-ai-drawer .cld-ai-send {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--cld-hl);
+  color: var(--cld-bg);
+}
+.cld-ai-drawer .cld-ai-send svg { width: 16px; height: 16px; }
+
+/* AI toggle in the dashboard top bar and reader toolbar */
+.cld-detail-toolbar-end { display: inline-flex; align-items: center; gap: 8px; }
+.cld-root button.cld-ai-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--cld-ink) 13%, transparent);
+  background: color-mix(in srgb, var(--cld-card) 74%, transparent);
+  color: var(--cld-ink);
+  font-size: 13px;
+  font-weight: 650;
+}
+.cld-root button.cld-ai-toggle svg { width: 15px; height: 15px; }
+.workspace-leaf-content[data-type="content-library-dashboard-view"] .cld-root button.cld-ai-toggle.is-active {
+  background: var(--cld-accent, color-mix(in srgb, var(--cld-tone-a) 75%, var(--cld-ink)));
+  border-color: transparent;
+  color: var(--cld-bg);
+}

@@ -1,4 +1,5 @@
 import {
+  Component,
   ItemView,
   MarkdownRenderer,
   Notice,
@@ -6,6 +7,7 @@ import {
   TFolder,
   normalizePath,
   setIcon,
+  type App,
   type WorkspaceLeaf,
 } from "obsidian";
 import type ContentLibraryDashboardPlugin from "./main";
@@ -36,7 +38,12 @@ interface Conversation {
   messages: AIMessage[];
 }
 
-export class AIChatView extends ItemView {
+/**
+ * The chat UI as a self-contained component, so the dashboard can host it in its
+ * drawer (and the legacy sidebar view can still wrap it).
+ */
+export class AIChatPanel extends Component {
+  readonly contentEl: HTMLElement;
   private conversation: Conversation;
   private status = new Map<CliProviderId, CliStatus | "checking">();
   private run: AIRun | null = null;
@@ -48,25 +55,23 @@ export class AIChatView extends ItemView {
   private sendBtn!: HTMLButtonElement;
   private activityEl!: HTMLElement;
 
-  constructor(leaf: WorkspaceLeaf, private plugin: ContentLibraryDashboardPlugin) {
-    super(leaf);
+  constructor(
+    readonly app: App,
+    private plugin: ContentLibraryDashboardPlugin,
+    private onClose?: () => void,
+    host?: HTMLElement,
+  ) {
+    super();
+    this.contentEl = host ?? createDiv();
     this.conversation = this.blankConversation(plugin.settings.aiProvider);
     this.attachNote = plugin.settings.aiAttachActiveNote;
   }
 
-  override getViewType(): string {
-    return AI_CHAT_VIEW_TYPE;
+  focusInput(): void {
+    this.inputEl?.focus();
   }
 
-  override getDisplayText(): string {
-    return t("AI 对话");
-  }
-
-  override getIcon(): string {
-    return "bot-message-square";
-  }
-
-  override async onOpen(): Promise<void> {
+  override onload(): void {
     this.contentEl.empty();
     this.contentEl.addClass("cld-ai");
     this.render();
@@ -77,7 +82,7 @@ export class AIChatView extends ItemView {
     this.registerInterval(window.setInterval(() => this.updateAttachLabel(), 1500));
   }
 
-  override async onClose(): Promise<void> {
+  override onunload(): void {
     this.run?.stop();
   }
 
@@ -93,6 +98,11 @@ export class AIChatView extends ItemView {
     root.empty();
 
     const header = root.createDiv({ cls: "cld-ai-header" });
+    const titleRow = header.createDiv({ cls: "cld-ai-title-row" });
+    const title = titleRow.createDiv({ cls: "cld-ai-title" });
+    setIcon(title.createSpan({ cls: "cld-ai-title-icon" }), "sparkles");
+    title.createSpan({ text: t("AI 对话") });
+    const actions = titleRow.createDiv({ cls: "cld-ai-actions" });
     const tabs = header.createDiv({ cls: "cld-ai-tabs" });
     for (const provider of AI_PROVIDERS) {
       const tab = tabs.createEl("button", { cls: "cld-ai-tab", text: provider.label });
@@ -102,7 +112,6 @@ export class AIChatView extends ItemView {
       tab.createSpan({ cls: `cld-ai-dot is-${state}`, attr: { "data-provider": provider.id } });
       tab.addEventListener("click", () => this.switchProvider(provider.id));
     }
-    const actions = header.createDiv({ cls: "cld-ai-actions" });
     this.iconButton(actions, "plus", t("新对话"), () => this.newConversation());
     this.iconButton(actions, "history", t("历史对话"), () => {
       this.showHistory = !this.showHistory;
@@ -112,6 +121,7 @@ export class AIChatView extends ItemView {
       if (this.conversation.file) void this.app.workspace.getLeaf("tab").openFile(this.conversation.file);
       else new Notice(t("这段对话还没有内容。"));
     });
+    if (this.onClose) this.iconButton(actions, "x", t("关闭"), () => this.onClose?.());
 
     this.bodyEl = root.createDiv({ cls: "cld-ai-body" });
     if (this.showHistory) {
@@ -569,4 +579,28 @@ function parseMessages(raw: string): AIMessage[] {
   }
   flush();
   return messages;
+}
+
+/** Legacy right-sidebar view: same panel, kept so saved workspaces still open. */
+export class AIChatView extends ItemView {
+  constructor(leaf: WorkspaceLeaf, private plugin: ContentLibraryDashboardPlugin) {
+    super(leaf);
+  }
+
+  override getViewType(): string {
+    return AI_CHAT_VIEW_TYPE;
+  }
+
+  override getDisplayText(): string {
+    return t("AI 对话");
+  }
+
+  override getIcon(): string {
+    return "sparkles";
+  }
+
+  override async onOpen(): Promise<void> {
+    this.contentEl.empty();
+    this.addChild(new AIChatPanel(this.app, this.plugin, undefined, this.contentEl));
+  }
 }

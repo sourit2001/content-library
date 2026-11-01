@@ -29,6 +29,7 @@ import { netEaseEmbed } from "./netease";
 import { extractPodcastUrl, podcastPlatform, spotifyEmbedUrl, timestampSeconds } from "./podcast";
 import { SOURCE_LABELS, TIME_LABELS, dateLocale, sourceLabel, t } from "./i18n";
 import { packName } from "./packs";
+import { AIChatPanel } from "./ai-view";
 
 export const CONTENT_LIBRARY_VIEW_TYPE = "content-library-dashboard-view";
 const ANNOTATION_SOURCE_ID = "system-dashboard-annotations";
@@ -48,6 +49,52 @@ type CommandHost = { commands?: { executeCommandById(id: string): boolean } };
 export class ContentLibraryView extends ItemView {
   private activeSourceId = "today";
   private selected: ContentItem | null = null;
+  /** AI chat drawer: one panel per dashboard, kept alive across re-renders. */
+  private aiOpen = false;
+  private aiDrawer: HTMLElement | null = null;
+  private aiPanel: AIChatPanel | null = null;
+  private aiResize: ResizeObserver | null = null;
+
+  /** Open, close or toggle the AI drawer without re-rendering the dashboard. */
+  toggleAI(open = !this.aiOpen): void {
+    this.aiOpen = open;
+    const shell = this.contentEl.querySelector<HTMLElement>(":scope > .cld-root");
+    if (shell) this.mountAI(shell);
+    this.contentEl.querySelectorAll(".cld-ai-toggle").forEach((button) => button.toggleClass("is-active", open));
+    if (open) window.setTimeout(() => this.aiPanel?.focusInput(), 50);
+  }
+
+  private mountAI(shell: HTMLElement): void {
+    shell.toggleClass("has-ai", this.aiOpen);
+    if (!this.aiOpen) {
+      this.aiDrawer?.detach();
+      return;
+    }
+    if (!this.aiDrawer) {
+      this.aiDrawer = createDiv({ cls: "cld-ai-drawer cld-glass" });
+      this.aiPanel = this.addChild(new AIChatPanel(this.app, this.plugin, () => this.toggleAI(false), this.aiDrawer.createDiv()));
+      // Keep the drawer exactly one screen tall while the dashboard scrolls under it.
+      this.aiResize = new ResizeObserver(() => this.sizeAIDrawer());
+      this.aiResize.observe(this.contentEl);
+      this.register(() => this.aiResize?.disconnect());
+    }
+    shell.appendChild(this.aiDrawer);
+    this.sizeAIDrawer();
+  }
+
+  private sizeAIDrawer(): void {
+    if (!this.aiDrawer) return;
+    const height = Math.max(320, this.contentEl.clientHeight - 32);
+    this.aiDrawer.style.height = `${height}px`;
+  }
+
+  private aiToggleButton(parent: HTMLElement): void {
+    const button = parent.createEl("button", { cls: "cld-ai-toggle", attr: { type: "button", "aria-label": t("AI 对话") } });
+    setIcon(button.createSpan(), "sparkles");
+    button.createSpan({ text: "AI" });
+    button.toggleClass("is-active", this.aiOpen);
+    button.addEventListener("click", () => this.toggleAI());
+  }
 
   /** The note open in the dashboard's reader, for the AI chat's "include current note". */
   currentNoteFile(): TFile | null {
@@ -159,6 +206,7 @@ export class ContentLibraryView extends ItemView {
       if (this.isPodcastMode()) await this.renderPodcastInspector(layout);
       else if (!this.isMusicMode()) this.renderInspector(layout);
     }
+    this.mountAI(shell);
   }
 
   private enabledSources(): ContentSource[] {
@@ -412,6 +460,7 @@ export class ContentLibraryView extends ItemView {
       }
     });
     this.renderAmbientControl(actions);
+    this.aiToggleButton(actions);
     if (podcastMode) {
       const search = this.iconButton(actions, "search", t("搜索节目"));
       search.addEventListener("click", () => {
@@ -1429,7 +1478,9 @@ export class ContentLibraryView extends ItemView {
       this.destroyAudio();
       void this.refresh();
     });
-    toolbar.createSpan({ cls: "cld-kind-badge", text: this.plugin.indexer.kindLabel(item.kind) });
+    const toolbarEnd = toolbar.createDiv({ cls: "cld-detail-toolbar-end" });
+    toolbarEnd.createSpan({ cls: "cld-kind-badge", text: this.plugin.indexer.kindLabel(item.kind) });
+    this.aiToggleButton(toolbarEnd);
     if (item.kind === "podcast" || item.file.extension !== "md") await this.renderPodcastDetail(detail, item);
     else await this.renderReadingDetail(detail, item);
   }

@@ -2769,13 +2769,17 @@ function runDeepSeek(options) {
 // src/ai-view.ts
 var AI_CHAT_VIEW_TYPE = "content-library-ai-chat";
 var MARKER = /^<!-- cld-ai (user|assistant) (\d+) -->$/;
-var AIChatView = class extends import_obsidian7.ItemView {
-  constructor(leaf, plugin) {
-    super(leaf);
+var AIChatPanel = class extends import_obsidian7.Component {
+  constructor(app, plugin, onClose, host) {
+    super();
+    this.app = app;
     this.plugin = plugin;
+    this.onClose = onClose;
+    this.contentEl = host ?? createDiv();
     this.conversation = this.blankConversation(plugin.settings.aiProvider);
     this.attachNote = plugin.settings.aiAttachActiveNote;
   }
+  contentEl;
   conversation;
   status = /* @__PURE__ */ new Map();
   run = null;
@@ -2786,16 +2790,10 @@ var AIChatView = class extends import_obsidian7.ItemView {
   inputEl;
   sendBtn;
   activityEl;
-  getViewType() {
-    return AI_CHAT_VIEW_TYPE;
+  focusInput() {
+    this.inputEl?.focus();
   }
-  getDisplayText() {
-    return t("AI \u5BF9\u8BDD");
-  }
-  getIcon() {
-    return "bot-message-square";
-  }
-  async onOpen() {
+  onload() {
     this.contentEl.empty();
     this.contentEl.addClass("cld-ai");
     this.render();
@@ -2804,7 +2802,7 @@ var AIChatView = class extends import_obsidian7.ItemView {
     this.registerEvent(this.app.workspace.on("file-open", () => this.updateAttachLabel()));
     this.registerInterval(window.setInterval(() => this.updateAttachLabel(), 1500));
   }
-  async onClose() {
+  onunload() {
     this.run?.stop();
   }
   blankConversation(provider) {
@@ -2816,6 +2814,11 @@ var AIChatView = class extends import_obsidian7.ItemView {
     const draft = this.inputEl?.value ?? "";
     root.empty();
     const header = root.createDiv({ cls: "cld-ai-header" });
+    const titleRow = header.createDiv({ cls: "cld-ai-title-row" });
+    const title = titleRow.createDiv({ cls: "cld-ai-title" });
+    (0, import_obsidian7.setIcon)(title.createSpan({ cls: "cld-ai-title-icon" }), "sparkles");
+    title.createSpan({ text: t("AI \u5BF9\u8BDD") });
+    const actions = titleRow.createDiv({ cls: "cld-ai-actions" });
     const tabs = header.createDiv({ cls: "cld-ai-tabs" });
     for (const provider of AI_PROVIDERS) {
       const tab = tabs.createEl("button", { cls: "cld-ai-tab", text: provider.label });
@@ -2824,7 +2827,6 @@ var AIChatView = class extends import_obsidian7.ItemView {
       tab.createSpan({ cls: `cld-ai-dot is-${state}`, attr: { "data-provider": provider.id } });
       tab.addEventListener("click", () => this.switchProvider(provider.id));
     }
-    const actions = header.createDiv({ cls: "cld-ai-actions" });
     this.iconButton(actions, "plus", t("\u65B0\u5BF9\u8BDD"), () => this.newConversation());
     this.iconButton(actions, "history", t("\u5386\u53F2\u5BF9\u8BDD"), () => {
       this.showHistory = !this.showHistory;
@@ -2834,6 +2836,7 @@ var AIChatView = class extends import_obsidian7.ItemView {
       if (this.conversation.file) void this.app.workspace.getLeaf("tab").openFile(this.conversation.file);
       else new import_obsidian7.Notice(t("\u8FD9\u6BB5\u5BF9\u8BDD\u8FD8\u6CA1\u6709\u5185\u5BB9\u3002"));
     });
+    if (this.onClose) this.iconButton(actions, "x", t("\u5173\u95ED"), () => this.onClose?.());
     this.bodyEl = root.createDiv({ cls: "cld-ai-body" });
     if (this.showHistory) {
       void this.renderHistory(this.bodyEl);
@@ -3261,6 +3264,25 @@ function parseMessages(raw) {
   flush();
   return messages;
 }
+var AIChatView = class extends import_obsidian7.ItemView {
+  constructor(leaf, plugin) {
+    super(leaf);
+    this.plugin = plugin;
+  }
+  getViewType() {
+    return AI_CHAT_VIEW_TYPE;
+  }
+  getDisplayText() {
+    return t("AI \u5BF9\u8BDD");
+  }
+  getIcon() {
+    return "sparkles";
+  }
+  async onOpen() {
+    this.contentEl.empty();
+    this.addChild(new AIChatPanel(this.app, this.plugin, void 0, this.contentEl));
+  }
+};
 
 // src/view.ts
 var import_obsidian8 = require("obsidian");
@@ -3299,6 +3321,47 @@ var ContentLibraryView = class _ContentLibraryView extends import_obsidian8.Item
   }
   activeSourceId = "today";
   selected = null;
+  /** AI chat drawer: one panel per dashboard, kept alive across re-renders. */
+  aiOpen = false;
+  aiDrawer = null;
+  aiPanel = null;
+  aiResize = null;
+  /** Open, close or toggle the AI drawer without re-rendering the dashboard. */
+  toggleAI(open = !this.aiOpen) {
+    this.aiOpen = open;
+    const shell = this.contentEl.querySelector(":scope > .cld-root");
+    if (shell) this.mountAI(shell);
+    this.contentEl.querySelectorAll(".cld-ai-toggle").forEach((button) => button.toggleClass("is-active", open));
+    if (open) window.setTimeout(() => this.aiPanel?.focusInput(), 50);
+  }
+  mountAI(shell) {
+    shell.toggleClass("has-ai", this.aiOpen);
+    if (!this.aiOpen) {
+      this.aiDrawer?.detach();
+      return;
+    }
+    if (!this.aiDrawer) {
+      this.aiDrawer = createDiv({ cls: "cld-ai-drawer cld-glass" });
+      this.aiPanel = this.addChild(new AIChatPanel(this.app, this.plugin, () => this.toggleAI(false), this.aiDrawer.createDiv()));
+      this.aiResize = new ResizeObserver(() => this.sizeAIDrawer());
+      this.aiResize.observe(this.contentEl);
+      this.register(() => this.aiResize?.disconnect());
+    }
+    shell.appendChild(this.aiDrawer);
+    this.sizeAIDrawer();
+  }
+  sizeAIDrawer() {
+    if (!this.aiDrawer) return;
+    const height = Math.max(320, this.contentEl.clientHeight - 32);
+    this.aiDrawer.style.height = `${height}px`;
+  }
+  aiToggleButton(parent) {
+    const button = parent.createEl("button", { cls: "cld-ai-toggle", attr: { type: "button", "aria-label": t("AI \u5BF9\u8BDD") } });
+    (0, import_obsidian8.setIcon)(button.createSpan(), "sparkles");
+    button.createSpan({ text: "AI" });
+    button.toggleClass("is-active", this.aiOpen);
+    button.addEventListener("click", () => this.toggleAI());
+  }
   /** The note open in the dashboard's reader, for the AI chat's "include current note". */
   currentNoteFile() {
     return this.detailOpen && this.selected ? this.selected.file : null;
@@ -3398,6 +3461,7 @@ var ContentLibraryView = class _ContentLibraryView extends import_obsidian8.Item
       if (this.isPodcastMode()) await this.renderPodcastInspector(layout);
       else if (!this.isMusicMode()) this.renderInspector(layout);
     }
+    this.mountAI(shell);
   }
   enabledSources() {
     const sources = this.plugin.settings.sources.filter((source) => source.enabled && source.folder);
@@ -3630,6 +3694,7 @@ var ContentLibraryView = class _ContentLibraryView extends import_obsidian8.Item
       }
     });
     this.renderAmbientControl(actions);
+    this.aiToggleButton(actions);
     if (podcastMode) {
       const search = this.iconButton(actions, "search", t("\u641C\u7D22\u8282\u76EE"));
       search.addEventListener("click", () => {
@@ -4587,7 +4652,9 @@ var ContentLibraryView = class _ContentLibraryView extends import_obsidian8.Item
       this.destroyAudio();
       void this.refresh();
     });
-    toolbar.createSpan({ cls: "cld-kind-badge", text: this.plugin.indexer.kindLabel(item.kind) });
+    const toolbarEnd = toolbar.createDiv({ cls: "cld-detail-toolbar-end" });
+    toolbarEnd.createSpan({ cls: "cld-kind-badge", text: this.plugin.indexer.kindLabel(item.kind) });
+    this.aiToggleButton(toolbarEnd);
     if (item.kind === "podcast" || item.file.extension !== "md") await this.renderPodcastDetail(detail, item);
     else await this.renderReadingDetail(detail, item);
   }
@@ -6321,7 +6388,7 @@ var ContentLibraryDashboardPlugin = class extends import_obsidian9.Plugin {
       (leaf) => new ContentLibraryView(leaf, this)
     );
     this.registerView(AI_CHAT_VIEW_TYPE, (leaf) => new AIChatView(leaf, this));
-    this.addRibbonIcon("bot-message-square", t("AI \u5BF9\u8BDD"), () => {
+    this.addRibbonIcon("sparkles", t("AI \u5BF9\u8BDD"), () => {
       void this.activateAIChat();
     });
     this.addCommand({
@@ -6376,13 +6443,12 @@ var ContentLibraryDashboardPlugin = class extends import_obsidian9.Plugin {
     }
     void this.app.workspace.revealLeaf(leaf);
   }
+  /** Open the dashboard and toggle its AI drawer. */
   async activateAIChat() {
-    let leaf = this.app.workspace.getLeavesOfType(AI_CHAT_VIEW_TYPE)[0];
-    if (!leaf) {
-      leaf = this.app.workspace.getRightLeaf(false) ?? this.app.workspace.getLeaf("split");
-      await leaf.setViewState({ type: AI_CHAT_VIEW_TYPE, active: true });
-    }
-    void this.app.workspace.revealLeaf(leaf);
+    for (const leaf of this.app.workspace.getLeavesOfType(AI_CHAT_VIEW_TYPE)) leaf.detach();
+    await this.activateView();
+    const view = this.app.workspace.getLeavesOfType(CONTENT_LIBRARY_VIEW_TYPE)[0]?.view;
+    if (view instanceof ContentLibraryView) view.toggleAI();
   }
   openSupport() {
     new SupportModal(this.app).open();

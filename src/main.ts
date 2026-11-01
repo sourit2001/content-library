@@ -78,7 +78,7 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
       (leaf) => new ContentLibraryView(leaf, this),
     );
     this.registerView(AI_CHAT_VIEW_TYPE, (leaf) => new AIChatView(leaf, this));
-    this.addRibbonIcon("bot-message-square", t("AI 对话"), () => {
+    this.addRibbonIcon("sparkles", t("AI 对话"), () => {
       void this.activateAIChat();
     });
     this.addCommand({
@@ -138,13 +138,13 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
     void this.app.workspace.revealLeaf(leaf);
   }
 
+  /** Open the dashboard and toggle its AI drawer. */
   async activateAIChat(): Promise<void> {
-    let leaf = this.app.workspace.getLeavesOfType(AI_CHAT_VIEW_TYPE)[0];
-    if (!leaf) {
-      leaf = this.app.workspace.getRightLeaf(false) ?? this.app.workspace.getLeaf("split");
-      await leaf.setViewState({ type: AI_CHAT_VIEW_TYPE, active: true });
-    }
-    void this.app.workspace.revealLeaf(leaf);
+    // The chat now lives in the dashboard; close the old sidebar copy if one was restored.
+    for (const leaf of this.app.workspace.getLeavesOfType(AI_CHAT_VIEW_TYPE)) leaf.detach();
+    await this.activateView();
+    const view = this.app.workspace.getLeavesOfType(CONTENT_LIBRARY_VIEW_TYPE)[0]?.view;
+    if (view instanceof ContentLibraryView) view.toggleAI();
   }
 
   openSupport(): void {
