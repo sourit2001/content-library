@@ -177,7 +177,7 @@ export class ContentLibrarySettingsTab extends PluginSettingTab {
         }));
     new Setting(containerEl)
       .setName(t("代理地址（可选）"))
-      .setDesc(t("Claude Code 不会自动走 VPN。留空时插件会自动读取系统代理；连不上（比如报 403）时，填你 VPN 的本地代理地址，例如 http://127.0.0.1:7890。"))
+      .setDesc(t("Claude Code 不会自动走 VPN。留空时插件会自动读取系统代理；连不上（比如报 403）时，填你 VPN 软件里显示的本地代理地址（格式是 http://127.0.0.1:端口号）。"))
       .addText((text) => text
         .setPlaceholder(t("自动"))
         .setValue(this.plugin.settings.aiProxy)

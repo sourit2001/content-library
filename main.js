@@ -506,7 +506,7 @@ var EN = {
   "\u8FD9\u4E00\u671F\u6CA1\u6709 show notes\u3002": "This episode has no show notes.",
   "\u5DF2\u6DFB\u52A0\uFF1A{name}": "Added: {name}",
   "\u4EE3\u7406\u5730\u5740\uFF08\u53EF\u9009\uFF09": "Proxy (optional)",
-  "Claude Code \u4E0D\u4F1A\u81EA\u52A8\u8D70 VPN\u3002\u7559\u7A7A\u65F6\u63D2\u4EF6\u4F1A\u81EA\u52A8\u8BFB\u53D6\u7CFB\u7EDF\u4EE3\u7406\uFF1B\u8FDE\u4E0D\u4E0A\uFF08\u6BD4\u5982\u62A5 403\uFF09\u65F6\uFF0C\u586B\u4F60 VPN \u7684\u672C\u5730\u4EE3\u7406\u5730\u5740\uFF0C\u4F8B\u5982 http://127.0.0.1:7890\u3002": "Claude Code doesn't follow your VPN on its own. Left empty, the plugin uses the system proxy; if it can't connect (e.g. a 403), enter your VPN's local proxy address, such as http://127.0.0.1:7890.",
+  "Claude Code \u4E0D\u4F1A\u81EA\u52A8\u8D70 VPN\u3002\u7559\u7A7A\u65F6\u63D2\u4EF6\u4F1A\u81EA\u52A8\u8BFB\u53D6\u7CFB\u7EDF\u4EE3\u7406\uFF1B\u8FDE\u4E0D\u4E0A\uFF08\u6BD4\u5982\u62A5 403\uFF09\u65F6\uFF0C\u586B\u4F60 VPN \u8F6F\u4EF6\u91CC\u663E\u793A\u7684\u672C\u5730\u4EE3\u7406\u5730\u5740\uFF08\u683C\u5F0F\u662F http://127.0.0.1:\u7AEF\u53E3\u53F7\uFF09\u3002": "Claude Code doesn't follow your VPN on its own. Left empty, the plugin uses the system proxy; if it can't connect (e.g. a 403), enter the local proxy address shown in your VPN app (format: http://127.0.0.1:<port>).",
   "\u81EA\u52A8": "Auto",
   "\u5DE6\u8FB9\u6CA1\u6709\u6253\u5F00\u7684\u7B14\u8BB0\uFF0C\u8FD9\u6761\u6D88\u606F\u4E0D\u4F1A\u9644\u5E26\u7B14\u8BB0\u3002": "No note is open on the left, so this message goes without one.",
   "\u9644\u5E26\uFF1A{name}": "Including: {name}",
@@ -2213,7 +2213,7 @@ var ContentLibrarySettingsTab = class extends import_obsidian5.PluginSettingTab 
       this.plugin.settings.aiChatFolder = value.trim() || "AI \u5BF9\u8BDD";
       await this.plugin.saveSettings(false);
     }));
-    new import_obsidian5.Setting(containerEl).setName(t("\u4EE3\u7406\u5730\u5740\uFF08\u53EF\u9009\uFF09")).setDesc(t("Claude Code \u4E0D\u4F1A\u81EA\u52A8\u8D70 VPN\u3002\u7559\u7A7A\u65F6\u63D2\u4EF6\u4F1A\u81EA\u52A8\u8BFB\u53D6\u7CFB\u7EDF\u4EE3\u7406\uFF1B\u8FDE\u4E0D\u4E0A\uFF08\u6BD4\u5982\u62A5 403\uFF09\u65F6\uFF0C\u586B\u4F60 VPN \u7684\u672C\u5730\u4EE3\u7406\u5730\u5740\uFF0C\u4F8B\u5982 http://127.0.0.1:7890\u3002")).addText((text) => text.setPlaceholder(t("\u81EA\u52A8")).setValue(this.plugin.settings.aiProxy).onChange(async (value) => {
+    new import_obsidian5.Setting(containerEl).setName(t("\u4EE3\u7406\u5730\u5740\uFF08\u53EF\u9009\uFF09")).setDesc(t("Claude Code \u4E0D\u4F1A\u81EA\u52A8\u8D70 VPN\u3002\u7559\u7A7A\u65F6\u63D2\u4EF6\u4F1A\u81EA\u52A8\u8BFB\u53D6\u7CFB\u7EDF\u4EE3\u7406\uFF1B\u8FDE\u4E0D\u4E0A\uFF08\u6BD4\u5982\u62A5 403\uFF09\u65F6\uFF0C\u586B\u4F60 VPN \u8F6F\u4EF6\u91CC\u663E\u793A\u7684\u672C\u5730\u4EE3\u7406\u5730\u5740\uFF08\u683C\u5F0F\u662F http://127.0.0.1:\u7AEF\u53E3\u53F7\uFF09\u3002")).addText((text) => text.setPlaceholder(t("\u81EA\u52A8")).setValue(this.plugin.settings.aiProxy).onChange(async (value) => {
       this.plugin.settings.aiProxy = value.trim();
       await this.plugin.saveSettings(false);
     }));

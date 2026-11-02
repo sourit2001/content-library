@@ -110,7 +110,7 @@ AI drawer. It sits beside your note and can include the note you're reading.
 - The AI can read your vault but cannot change notes. Each chat is saved as a
   Markdown note in the `AI 对话` folder.
 - If Claude Code reports `403 Request not allowed`, it isn't going through your
-  VPN; set **Proxy** in the plugin settings (for example `http://127.0.0.1:7890`).
+  VPN; set **Proxy** in the plugin settings to the local proxy address shown in your VPN app (`http://127.0.0.1:<port>`).
 
 点仪表盘顶部（或阅读页）的对话按钮打开 AI 抽屉，可以边看笔记边问。Claude、Codex、Grok
 调用你电脑上已登录的官方命令行工具，用你自己的账号额度；DeepSeek 填自己的 API Key。

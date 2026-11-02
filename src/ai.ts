@@ -74,7 +74,7 @@ export interface AIRunOptions {
   sessionId: string;
   cwd: string;
   binPath: string;
-  /** Proxy URL for the CLI (e.g. http://127.0.0.1:7890); empty = detect automatically. */
+  /** Proxy URL for the CLI (e.g. http://127.0.0.1:<port>); empty = detect automatically. */
   proxy: string;
   /** Optional model override for the CLI (empty = the CLI's own default). */
   model: string;
