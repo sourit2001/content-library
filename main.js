@@ -131,6 +131,9 @@ var EN = {
   "{count} \u4E2A\u97F3\u9891": "{count} audio files",
   "\u672A\u547D\u540D\u6587\u4EF6\u5939": "Untitled folder",
   "\u8BF7\u9009\u62E9\u4E00\u4E2A\u6587\u4EF6\u5939": "Choose a folder",
+  "\u4FDD\u5B58\u4F4D\u7F6E\uFF08\u53EF\u9009\uFF09": "Save location (optional)",
+  "\u97F3\u4E50\u6536\u85CF\u53EA\u9700\u5728 Dashboard \u91CC\u7C98\u8D34\u6B4C\u5355\u6216\u6B4C\u66F2\u94FE\u63A5\uFF0C\u4E0D\u7528\u9009\u6587\u4EF6\u5939\u3002\u94FE\u63A5\u4F1A\u81EA\u52A8\u4FDD\u5B58\u5230\u8FD9\u91CC\uFF0C\u60F3\u6362\u4F4D\u7F6E\u518D\u6539\u3002": "Music collections just need pasted playlist or song links, no folder to pick. Links are saved here automatically; change it only if you want another location.",
+  "\u8FD8\u6CA1\u6709\u94FE\u63A5\u3002\u6253\u5F00 Dashboard \u7684\u8FD9\u4E2A\u680F\u76EE\uFF0C\u7C98\u8D34\u7F51\u6613\u4E91\u3001QQ \u97F3\u4E50\u6B4C\u5355\u6216 YouTube \u94FE\u63A5\u5373\u53EF\u3002": "No links yet. Open this section in the Dashboard and paste a NetEase, QQ Music playlist or YouTube link.",
   "\u663E\u793A\u5728 Dashboard": "Show on dashboard",
   "\u7F16\u8F91": "Edit",
   "\u5220\u9664": "Delete",
@@ -2308,18 +2311,29 @@ var ContentLibrarySettingsTab = class extends import_obsidian5.PluginSettingTab 
       for (const [value, label] of Object.entries(SOURCE_GROUP_LABELS)) dropdown.addOption(value, t(label));
       dropdown.setValue(source.group).onChange(async (value) => {
         source.group = value;
-        await this.plugin.saveSettings();
+        if (source.group === "music") {
+          source.kind = "music";
+          if (!source.icon || source.icon === "folder") source.icon = "music-2";
+          if (!source.folder) source.folder = this.plugin.defaultMusicFolder(source.id);
+          if (!source.name || source.name === "\u65B0\u6587\u4EF6\u5939" || source.name === "New folder") source.name = t("\u97F3\u4E50\u6536\u85CF");
+        } else if (source.kind === "music") {
+          source.kind = this.plugin.indexer.inferSourceKind(source.folder, "generic");
+          if (source.icon === "music-2") source.icon = "folder";
+        }
+        await this.plugin.saveSettings(false);
+        this.display();
       });
     });
-    new import_obsidian5.Setting(body).setName(t("\u9009\u62E9\u6587\u4EF6\u5939")).setDesc(t("\u9009\u62E9 Vault \u4E2D\u5DF2\u6709\u7684\u4EFB\u610F\u6587\u4EF6\u5939\uFF1B\u63D2\u4EF6\u4E0D\u4F1A\u79FB\u52A8\u6216\u590D\u5236\u5176\u4E2D\u7684\u7B14\u8BB0\u3002")).addDropdown((dropdown) => {
+    const isMusicSource = source.kind === "music" || source.group === "music";
+    new import_obsidian5.Setting(body).setName(isMusicSource ? t("\u4FDD\u5B58\u4F4D\u7F6E\uFF08\u53EF\u9009\uFF09") : t("\u9009\u62E9\u6587\u4EF6\u5939")).setDesc(isMusicSource ? t("\u97F3\u4E50\u6536\u85CF\u53EA\u9700\u5728 Dashboard \u91CC\u7C98\u8D34\u6B4C\u5355\u6216\u6B4C\u66F2\u94FE\u63A5\uFF0C\u4E0D\u7528\u9009\u6587\u4EF6\u5939\u3002\u94FE\u63A5\u4F1A\u81EA\u52A8\u4FDD\u5B58\u5230\u8FD9\u91CC\uFF0C\u60F3\u6362\u4F4D\u7F6E\u518D\u6539\u3002") : t("\u9009\u62E9 Vault \u4E2D\u5DF2\u6709\u7684\u4EFB\u610F\u6587\u4EF6\u5939\uFF1B\u63D2\u4EF6\u4E0D\u4F1A\u79FB\u52A8\u6216\u590D\u5236\u5176\u4E2D\u7684\u7B14\u8BB0\u3002")).addDropdown((dropdown) => {
       const folders = this.app.vault.getAllLoadedFiles().filter((file) => file instanceof import_obsidian5.TFolder && Boolean(file.path)).sort((a, b) => a.path.localeCompare(b.path));
       if (source.folder && !folders.some((folder) => folder.path === source.folder)) dropdown.addOption(source.folder, source.folder);
       dropdown.addOption("", t("\u8BF7\u9009\u62E9"));
       for (const folder of folders) dropdown.addOption(folder.path, folder.path);
       dropdown.setValue(source.folder).onChange(async (value) => {
-        source.folder = value;
-        source.kind = this.plugin.indexer.inferSourceKind(value, source.kind);
-        source.icon = source.kind === "podcast" ? "headphones" : source.kind === "podlink" ? "podcast" : "folder";
+        source.folder = value || (isMusicSource ? this.plugin.defaultMusicFolder(source.id) : "");
+        source.kind = isMusicSource ? "music" : this.plugin.indexer.inferSourceKind(value, source.kind);
+        source.icon = source.kind === "podcast" ? "headphones" : source.kind === "podlink" ? "podcast" : source.kind === "music" ? "music-2" : "folder";
         if ((!source.name || source.name === "\u65B0\u6587\u4EF6\u5939" || source.name === "New folder") && value) {
           source.name = value.split("/").pop() || t("\u6587\u4EF6\u5939");
         }
@@ -2329,7 +2343,7 @@ var ContentLibrarySettingsTab = class extends import_obsidian5.PluginSettingTab 
     });
     body.createEl("p", {
       cls: "setting-item-description",
-      text: stats.playlists > 0 ? t("\u5DF2\u8BC6\u522B\u4E3A\u97F3\u4E50\u6B4C\u5355\u6587\u4EF6\u5939\u3002Markdown \u6587\u4EF6\u7684 playlist_url \u4F1A\u540C\u6B65\u7F51\u6613\u4E91\u3001QQ \u97F3\u4E50\u6B4C\u5355\u6216 YouTube \u89C6\u9891\u3002") : stats.audio > 0 ? t("\u5DF2\u81EA\u52A8\u8BC6\u522B\u4E3A\u97F3\u9891\u64AD\u653E\u5217\u8868\u3002") : t("\u5DF2\u81EA\u52A8\u8BC6\u522B\u4E3A\u7B14\u8BB0\u6587\u4EF6\u5939\u3002")
+      text: isMusicSource && stats.playlists === 0 ? t("\u8FD8\u6CA1\u6709\u94FE\u63A5\u3002\u6253\u5F00 Dashboard \u7684\u8FD9\u4E2A\u680F\u76EE\uFF0C\u7C98\u8D34\u7F51\u6613\u4E91\u3001QQ \u97F3\u4E50\u6B4C\u5355\u6216 YouTube \u94FE\u63A5\u5373\u53EF\u3002") : stats.playlists > 0 ? t("\u5DF2\u8BC6\u522B\u4E3A\u97F3\u4E50\u6B4C\u5355\u6587\u4EF6\u5939\u3002Markdown \u6587\u4EF6\u7684 playlist_url \u4F1A\u540C\u6B65\u7F51\u6613\u4E91\u3001QQ \u97F3\u4E50\u6B4C\u5355\u6216 YouTube \u89C6\u9891\u3002") : stats.audio > 0 ? t("\u5DF2\u81EA\u52A8\u8BC6\u522B\u4E3A\u97F3\u9891\u64AD\u653E\u5217\u8868\u3002") : t("\u5DF2\u81EA\u52A8\u8BC6\u522B\u4E3A\u7B14\u8BB0\u6587\u4EF6\u5939\u3002")
     });
   }
 };
@@ -6700,10 +6714,10 @@ var ContentLibraryDashboardPlugin = class extends import_obsidian9.Plugin {
   webPreviewCache = /* @__PURE__ */ new Map();
   playlistCache = /* @__PURE__ */ new Map();
   async onload() {
+    this.indexer = new VaultContentIndexer(this.app);
     await this.loadSettings();
     setLanguage(this.settings.language);
     await this.saveData(this.settings);
-    this.indexer = new VaultContentIndexer(this.app);
     this.app.workspace.onLayoutReady(() => {
       if (this.seedPodcastLinksSource()) {
         void this.saveData(this.settings);
@@ -6828,6 +6842,13 @@ var ContentLibraryDashboardPlugin = class extends import_obsidian9.Plugin {
       deepseekModel: typeof loaded?.deepseekModel === "string" && loaded.deepseekModel ? loaded.deepseekModel : DEFAULT_SETTINGS.deepseekModel
     };
     if (this.settings.theme === "glass" && !this.settings.claimedThemes.includes("glass")) this.settings.claimedThemes.push("glass");
+    for (const source of this.settings.sources) {
+      if ((source.kind === "music" || source.group === "music") && !source.folder.trim()) {
+        source.folder = this.defaultMusicFolder(source.id);
+        source.kind = "music";
+        if (!source.icon || source.icon === "folder") source.icon = "music-2";
+      }
+    }
     const musicFolder = (0, import_obsidian9.normalizePath)("\u97F3\u4E50\u6536\u85CF");
     const hasMusicFolder = Boolean(this.app.vault.getAbstractFileByPath(musicFolder));
     const hasMusicSource = this.settings.sources.some((source) => (0, import_obsidian9.normalizePath)(source.folder).replace(/\/$/, "") === musicFolder);
@@ -6843,6 +6864,19 @@ var ContentLibraryDashboardPlugin = class extends import_obsidian9.Plugin {
         enabled: true
       });
     }
+  }
+  /**
+   * Picks the folder a music category stores its link notes in when the user didn't choose one.
+   * Prefers 音乐收藏; never takes a folder another category already uses or one holding audio.
+   */
+  defaultMusicFolder(excludeSourceId) {
+    const used = new Set(this.settings.sources.filter((source) => source.id !== excludeSourceId && source.folder).map((source) => (0, import_obsidian9.normalizePath)(source.folder).replace(/\/$/, "")));
+    const base = (0, import_obsidian9.normalizePath)("\u97F3\u4E50\u6536\u85CF");
+    for (let index = 1; index < 100; index += 1) {
+      const candidate = index === 1 ? base : `${base}-${index}`;
+      if (!used.has(candidate) && this.indexer.sourceStats(candidate).audio === 0) return candidate;
+    }
+    return `${base}-${Date.now()}`;
   }
   /**
    * Adds the 播客收藏 category once. It gets its own folder: an existing folder that

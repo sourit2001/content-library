@@ -68,10 +68,10 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
   private playlistCache = new Map<string, Promise<NetEasePlaylist | null>>();
 
   override async onload(): Promise<void> {
+    this.indexer = new VaultContentIndexer(this.app);
     await this.loadSettings();
     setLanguage(this.settings.language);
     await this.saveData(this.settings);
-    this.indexer = new VaultContentIndexer(this.app);
     this.app.workspace.onLayoutReady(() => {
       if (this.seedPodcastLinksSource()) {
         void this.saveData(this.settings);
@@ -230,6 +230,14 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
     };
     // Anyone already on the glass theme keeps it after it became a premium (limited-free) theme.
     if (this.settings.theme === "glass" && !this.settings.claimedThemes.includes("glass")) this.settings.claimedThemes.push("glass");
+    // 音乐收藏 only needs pasted links: a music category without a folder gets one automatically.
+    for (const source of this.settings.sources) {
+      if ((source.kind === "music" || source.group === "music") && !source.folder.trim()) {
+        source.folder = this.defaultMusicFolder(source.id);
+        source.kind = "music";
+        if (!source.icon || source.icon === "folder") source.icon = "music-2";
+      }
+    }
     const musicFolder = normalizePath("音乐收藏");
     const hasMusicFolder = Boolean(this.app.vault.getAbstractFileByPath(musicFolder));
     const hasMusicSource = this.settings.sources.some((source) => normalizePath(source.folder).replace(/\/$/, "") === musicFolder);
@@ -245,6 +253,22 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
         enabled: true,
       });
     }
+  }
+
+  /**
+   * Picks the folder a music category stores its link notes in when the user didn't choose one.
+   * Prefers 音乐收藏; never takes a folder another category already uses or one holding audio.
+   */
+  defaultMusicFolder(excludeSourceId?: string): string {
+    const used = new Set(this.settings.sources
+      .filter((source) => source.id !== excludeSourceId && source.folder)
+      .map((source) => normalizePath(source.folder).replace(/\/$/, "")));
+    const base = normalizePath("音乐收藏");
+    for (let index = 1; index < 100; index += 1) {
+      const candidate = index === 1 ? base : `${base}-${index}`;
+      if (!used.has(candidate) && this.indexer.sourceStats(candidate).audio === 0) return candidate;
+    }
+    return `${base}-${Date.now()}`;
   }
 
   /**

@@ -310,10 +310,24 @@ export class ContentLibrarySettingsTab extends PluginSettingTab {
       for (const [value, label] of Object.entries(SOURCE_GROUP_LABELS)) dropdown.addOption(value, t(label));
       dropdown.setValue(source.group).onChange(async (value) => {
         source.group = value as keyof typeof SOURCE_GROUP_LABELS;
-        await this.plugin.saveSettings();
+        if (source.group === "music") {
+          // Music is collected by pasting links, so no folder needs to be picked by hand.
+          source.kind = "music";
+          if (!source.icon || source.icon === "folder") source.icon = "music-2";
+          if (!source.folder) source.folder = this.plugin.defaultMusicFolder(source.id);
+          if (!source.name || source.name === "新文件夹" || source.name === "New folder") source.name = t("音乐收藏");
+        } else if (source.kind === "music") {
+          source.kind = this.plugin.indexer.inferSourceKind(source.folder, "generic");
+          if (source.icon === "music-2") source.icon = "folder";
+        }
+        await this.plugin.saveSettings(false);
+        this.display();
       });
     });
-    new Setting(body).setName(t("选择文件夹")).setDesc(t("选择 Vault 中已有的任意文件夹；插件不会移动或复制其中的笔记。")).addDropdown((dropdown) => {
+    const isMusicSource = source.kind === "music" || source.group === "music";
+    new Setting(body).setName(isMusicSource ? t("保存位置（可选）") : t("选择文件夹")).setDesc(isMusicSource
+      ? t("音乐收藏只需在 Dashboard 里粘贴歌单或歌曲链接，不用选文件夹。链接会自动保存到这里，想换位置再改。")
+      : t("选择 Vault 中已有的任意文件夹；插件不会移动或复制其中的笔记。")).addDropdown((dropdown) => {
       const folders = this.app.vault.getAllLoadedFiles()
         .filter((file): file is TFolder => file instanceof TFolder && Boolean(file.path))
         .sort((a, b) => a.path.localeCompare(b.path));
@@ -321,9 +335,9 @@ export class ContentLibrarySettingsTab extends PluginSettingTab {
       dropdown.addOption("", t("请选择"));
       for (const folder of folders) dropdown.addOption(folder.path, folder.path);
       dropdown.setValue(source.folder).onChange(async (value) => {
-        source.folder = value;
-        source.kind = this.plugin.indexer.inferSourceKind(value, source.kind);
-        source.icon = source.kind === "podcast" ? "headphones" : source.kind === "podlink" ? "podcast" : "folder";
+        source.folder = value || (isMusicSource ? this.plugin.defaultMusicFolder(source.id) : "");
+        source.kind = isMusicSource ? "music" : this.plugin.indexer.inferSourceKind(value, source.kind);
+        source.icon = source.kind === "podcast" ? "headphones" : source.kind === "podlink" ? "podcast" : source.kind === "music" ? "music-2" : "folder";
         if ((!source.name || source.name === "新文件夹" || source.name === "New folder") && value) {
           source.name = value.split("/").pop() || t("文件夹");
         }
@@ -333,7 +347,9 @@ export class ContentLibrarySettingsTab extends PluginSettingTab {
     });
     body.createEl("p", {
       cls: "setting-item-description",
-      text: stats.playlists > 0
+      text: isMusicSource && stats.playlists === 0
+        ? t("还没有链接。打开 Dashboard 的这个栏目，粘贴网易云、QQ 音乐歌单或 YouTube 链接即可。")
+        : stats.playlists > 0
         ? t("已识别为音乐歌单文件夹。Markdown 文件的 playlist_url 会同步网易云、QQ 音乐歌单或 YouTube 视频。")
         : stats.audio > 0
         ? t("已自动识别为音频播放列表。")
