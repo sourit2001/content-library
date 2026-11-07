@@ -160,6 +160,6 @@ export class VaultContentIndexer {
   }
 
   kindLabel(kind: SourceKind): string {
-    return ({ book: t("书籍"), podcast: t("播客"), podlink: t("播客"), music: t("音乐"), x: t("X 推文"), news: t("新闻"), clip: t("网页收藏"), generic: t("笔记") })[kind];
+    return ({ book: t("书籍"), podcast: t("播客"), podlink: t("播客"), music: t("音乐"), video: t("视频"), x: t("X 推文"), news: t("新闻"), clip: t("网页收藏"), generic: t("笔记") })[kind];
   }
 }

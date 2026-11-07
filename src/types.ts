@@ -5,8 +5,8 @@ import type { LanguagePreference } from "./i18n";
 export type DashboardTheme = "grass" | "blue" | "pink" | "rose" | "black" | "glass";
 export type ThemeMode = "system" | "light" | "dark";
 export type AnnotationHighlight = "yellow" | "orange" | "blue" | "pink";
-export type SourceKind = "book" | "podcast" | "podlink" | "music" | "x" | "news" | "clip" | "generic";
-export type SourceGroup = "information" | "skills" | "bookshelf" | "ideas" | "needs" | "podcast" | "podlinks" | "music";
+export type SourceKind = "book" | "podcast" | "podlink" | "music" | "video" | "x" | "news" | "clip" | "generic";
+export type SourceGroup = "information" | "skills" | "bookshelf" | "ideas" | "needs" | "podcast" | "podlinks" | "music" | "videos";
 export type ContentProgressState = "in-progress" | "complete";
 
 export interface ContentProgress {
@@ -108,6 +108,8 @@ export interface DashboardSettings {
   /** Set once the 播客收藏 (podcast links) source has been offered, so removing it sticks. */
   podcastLinksSeeded: boolean;
   podcastSubscriptions: PodcastSubscription[];
+  /** Set once the 视频收藏 source has been offered, so removing it sticks. */
+  videoLinksSeeded: boolean;
 }
 
 export interface WebPreview {
@@ -151,6 +153,7 @@ export const SOURCE_KIND_LABELS: Record<SourceKind, string> = {
   podcast: "收听",
   podlink: "播客链接",
   music: "音乐",
+  video: "视频",
   x: "推文",
   news: "新闻",
   clip: "收藏",
@@ -166,6 +169,7 @@ export const SOURCE_GROUP_LABELS: Record<SourceGroup, string> = {
   podcast: "播客页面",
   podlinks: "播客收藏",
   music: "音乐收藏",
+  videos: "视频收藏",
 };
 
 export const DEFAULT_SETTINGS: DashboardSettings = {
@@ -181,7 +185,7 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
   bannerPath: "",
   annotationFolder: "Dashboard Notes",
   dashboardTitle: "内容图书馆",
-  sourceGroupOrder: ["podcast", "podlinks", "music", "information", "skills", "bookshelf", "ideas", "needs"],
+  sourceGroupOrder: ["podcast", "podlinks", "music", "videos", "information", "skills", "bookshelf", "ideas", "needs"],
   sources: [],
   coverOverrides: {},
   playbackMode: "sequential",
@@ -199,4 +203,5 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
   deepseekModel: "deepseek-chat",
   podcastLinksSeeded: false,
   podcastSubscriptions: [],
+  videoLinksSeeded: false,
 };

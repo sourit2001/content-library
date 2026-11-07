@@ -316,17 +316,26 @@ export class ContentLibrarySettingsTab extends PluginSettingTab {
           if (!source.icon || source.icon === "folder") source.icon = "music-2";
           if (!source.folder) source.folder = this.plugin.defaultMusicFolder(source.id);
           if (!source.name || source.name === "新文件夹" || source.name === "New folder") source.name = t("音乐收藏");
-        } else if (source.kind === "music") {
+        } else if (source.group === "videos") {
+          // Videos are also collected by pasting links into the dashboard.
+          source.kind = "video";
+          if (!source.icon || source.icon === "folder") source.icon = "clapperboard";
+          if (!source.folder) source.folder = this.plugin.defaultVideoFolder(source.id);
+          if (!source.name || source.name === "新文件夹" || source.name === "New folder") source.name = t("视频收藏");
+        } else if (source.kind === "music" || source.kind === "video") {
           source.kind = this.plugin.indexer.inferSourceKind(source.folder, "generic");
-          if (source.icon === "music-2") source.icon = "folder";
+          if (source.icon === "music-2" || source.icon === "clapperboard") source.icon = "folder";
         }
         await this.plugin.saveSettings(false);
         this.display();
       });
     });
     const isMusicSource = source.kind === "music" || source.group === "music";
-    new Setting(body).setName(isMusicSource ? t("保存位置（可选）") : t("选择文件夹")).setDesc(isMusicSource
+    const isVideoSource = source.kind === "video" || source.group === "videos";
+    new Setting(body).setName(isMusicSource || isVideoSource ? t("保存位置（可选）") : t("选择文件夹")).setDesc(isMusicSource
       ? t("音乐收藏只需在 Dashboard 里粘贴歌单或歌曲链接，不用选文件夹。链接会自动保存到这里，想换位置再改。")
+      : isVideoSource
+      ? t("视频收藏只需在 Dashboard 里粘贴视频链接，每个视频会在这里生成一篇笔记，想换位置再改。")
       : t("选择 Vault 中已有的任意文件夹；插件不会移动或复制其中的笔记。")).addDropdown((dropdown) => {
       const folders = this.app.vault.getAllLoadedFiles()
         .filter((file): file is TFolder => file instanceof TFolder && Boolean(file.path))
@@ -335,9 +344,9 @@ export class ContentLibrarySettingsTab extends PluginSettingTab {
       dropdown.addOption("", t("请选择"));
       for (const folder of folders) dropdown.addOption(folder.path, folder.path);
       dropdown.setValue(source.folder).onChange(async (value) => {
-        source.folder = value || (isMusicSource ? this.plugin.defaultMusicFolder(source.id) : "");
-        source.kind = isMusicSource ? "music" : this.plugin.indexer.inferSourceKind(value, source.kind);
-        source.icon = source.kind === "podcast" ? "headphones" : source.kind === "podlink" ? "podcast" : source.kind === "music" ? "music-2" : "folder";
+        source.folder = value || (isMusicSource ? this.plugin.defaultMusicFolder(source.id) : isVideoSource ? this.plugin.defaultVideoFolder(source.id) : "");
+        source.kind = isMusicSource ? "music" : isVideoSource ? "video" : this.plugin.indexer.inferSourceKind(value, source.kind);
+        source.icon = source.kind === "podcast" ? "headphones" : source.kind === "podlink" ? "podcast" : source.kind === "music" ? "music-2" : source.kind === "video" ? "clapperboard" : "folder";
         if ((!source.name || source.name === "新文件夹" || source.name === "New folder") && value) {
           source.name = value.split("/").pop() || t("文件夹");
         }
@@ -347,7 +356,9 @@ export class ContentLibrarySettingsTab extends PluginSettingTab {
     });
     body.createEl("p", {
       cls: "setting-item-description",
-      text: isMusicSource && stats.playlists === 0
+      text: isVideoSource
+        ? t("打开 Dashboard 的这个栏目，点“添加视频”粘贴 YouTube 或 B站链接即可。")
+        : isMusicSource && stats.playlists === 0
         ? t("还没有链接。打开 Dashboard 的这个栏目，粘贴网易云、QQ 音乐歌单或 YouTube 链接即可。")
         : stats.playlists > 0
         ? t("已识别为音乐歌单文件夹。Markdown 文件的 playlist_url 会同步网易云、QQ 音乐歌单或 YouTube 视频。")

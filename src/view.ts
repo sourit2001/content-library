@@ -28,6 +28,7 @@ import type { NetEasePlaylist } from "./main";
 import { isYouTubeUrl, youTubeEmbedUrl } from "./youtube";
 import { netEaseEmbed } from "./netease";
 import { extractPodcastUrl, isPodcastShowLink, podcastPlatform, spotifyEmbedUrl, timestampSeconds } from "./podcast";
+import { QUARK_PLACEHOLDER_TITLE, VIDEO_PLATFORM_LABELS, extractVideoUrl, quarkVideoId, videoEmbedUrl, videoFromFrontmatter, videoPlatform, videoUrlAt, type VideoPlatform } from "./video";
 import { SOURCE_LABELS, TIME_LABELS, dateLocale, sourceLabel, t } from "./i18n";
 import { packName } from "./packs";
 import { AIChatPanel } from "./ai-view";
@@ -122,6 +123,17 @@ export class ContentLibraryView extends ItemView {
   private musicQueueTimer: number | null = null;
   private musicQueueToken = 0;
   private dockFrame: HTMLIFrameElement | null = null;
+  /** B站 videos on desktop play in a <webview> of the video page (quality switching needs the full player). */
+  private dockWebview: BiliWebview | null = null;
+  /** The 视频收藏 video currently in the floating player, so timestamps can seek it. */
+  private videoDock: { path: string; platform: VideoPlatform; videoId: string; part: number; url: string; loaded: boolean; last: number; pendingSeek: number | null } | null = null;
+  /** Video plays in place at the top of its note (true) or in the small floating window (false). */
+  private videoInline = true;
+  /** The spot at the top of the open video note the player sits on when it plays in place. */
+  private videoAnchor: { path: string; el: HTMLElement } | null = null;
+  private videoAnchorObserver: ResizeObserver | null = null;
+  private videoSyncQueued = false;
+  private quarkLoginOpen = false;
   /** Audio element of the player on the open reading page (podcast links seek it from show notes). */
   private readingAudio: HTMLAudioElement | null = null;
   private inspirationOffset = 0;
@@ -161,6 +173,9 @@ export class ContentLibraryView extends ItemView {
     }, 60_000));
     this.registerInterval(window.setInterval(() => this.updateTodayClock(), 1_000));
     this.registerDomEvent(window, "message", (event: MessageEvent) => this.onPlayerMessage(event));
+    // Keep an in-page video player on its spot while the page scrolls or the pane resizes.
+    this.registerDomEvent(this.containerEl, "scroll", () => { if (this.videoDock) this.syncVideoDock(); }, { capture: true, passive: true });
+    this.registerDomEvent(window, "resize", () => { if (this.videoDock) this.syncVideoDock(); });
     this.registerInterval(window.setInterval(() => {
       if (this.app.workspace.getActiveViewOfType(ContentLibraryView)?.leaf !== this.leaf || this.detailOpen || this.activeSourceId !== "today") return;
       const hour = this.currentInspirationHour();
@@ -173,6 +188,7 @@ export class ContentLibraryView extends ItemView {
   }
 
   override async onClose(): Promise<void> {
+    this.videoAnchorObserver?.disconnect();
     this.readingScrollCleanup?.();
     this.destroyAudio();
     this.stopMusicQueue();
@@ -215,6 +231,7 @@ export class ContentLibraryView extends ItemView {
       else if (!this.isMusicMode()) this.renderInspector(layout);
     }
     this.mountAI(shell);
+    if (this.videoDock) this.syncVideoDock();
   }
 
   private enabledSources(): ContentSource[] {
@@ -532,6 +549,11 @@ export class ContentLibraryView extends ItemView {
       this.renderPodcastLinkLibrary(main, source, items);
       return;
     }
+    if (source?.kind === "video") {
+      this.renderHomeBanner(main, source, items.length, false);
+      this.renderVideoLibrary(main, source, items);
+      return;
+    }
     if (this.isMusicMode()) {
       this.renderHomeBanner(main, source, items.length, false);
       await this.renderMusicLibrary(main, items);
@@ -628,6 +650,298 @@ export class ContentLibraryView extends ItemView {
     }
     const grid = main.createDiv({ cls: "cld-library-grid cld-recent-grid" });
     for (const item of episodes) this.renderContentCard(grid, item);
+  }
+
+  /** 视频收藏: YouTube and Bilibili videos saved as notes with timestamped key points. */
+  private renderVideoLibrary(main: HTMLElement, source: ContentSource, items: ContentItem[]): void {
+    const videos = items.filter((item) => item.file.extension === "md");
+    const sectionHead = main.createDiv({ cls: "cld-section-head cld-music-section-head" });
+    const heading = sectionHead.createDiv();
+    heading.createEl("strong", { text: t("视频收藏") });
+    heading.createEl("p", { text: t("粘贴 YouTube、B站或夸克网盘的视频链接；有创作者章节的视频会自动生成带时间戳的要点") });
+    const actions = sectionHead.createDiv({ cls: "cld-music-section-actions" });
+    actions.createEl("small", { text: t("{count} 个视频", { count: videos.length }) });
+    const add = actions.createEl("button", { cls: "cld-text-button mod-cta", text: t("添加视频"), attr: { type: "button" } });
+    add.addEventListener("click", () => {
+      new VideoLinkModal(this.app, source.name, async (link, title) => {
+        const notice = new Notice(t("正在获取视频信息…"), 0);
+        try {
+          const { file, video, existed } = await this.plugin.createVideoNote(source, link, title);
+          notice.hide();
+          if (existed) new Notice(t("这个视频已经收藏过了：{name}", { name: file.basename }), 5000);
+          else if (video.platform === "quark") new Notice(t("已添加：{name}。第一次播放时请先在播放器里登录夸克网盘。", { name: file.basename }), 6000);
+          else if (video.chapters.length) new Notice(t("已添加：{name}（{count} 个要点）", { name: file.basename, count: video.chapters.length }), 5000);
+          else new Notice(t("已添加：{name}。这个视频没有创作者章节，暂时没有要点。", { name: file.basename }), 6000);
+          await this.refresh();
+        } catch (error) {
+          notice.hide();
+          throw error;
+        }
+      }).open();
+    });
+    if (!videos.length) {
+      const empty = main.createDiv({ cls: "cld-empty cld-glass" });
+      empty.createEl("strong", { text: t("还没有视频") });
+      empty.createEl("p", { text: t("点击右上角“添加视频”，粘贴 YouTube 或 B站的分享链接即可。") });
+      return;
+    }
+    const grid = main.createDiv({ cls: "cld-library-grid cld-recent-grid" });
+    for (const item of videos) this.renderContentCard(grid, item);
+  }
+
+  private videoOf(item: ContentItem): { platform: VideoPlatform; videoId: string; part: number; url: string } | null {
+    const frontmatter = (this.app.metadataCache.getFileCache(item.file)?.frontmatter ?? {}) as Record<string, unknown>;
+    return videoFromFrontmatter(frontmatter);
+  }
+
+  /**
+   * Top of a video note. The player itself lives outside the page (so a dashboard refresh never
+   * reloads it) and is laid over this spot; scrolled out of view, it shrinks to the small window.
+   */
+  private renderVideoPoster(parent: HTMLElement, item: ContentItem): void {
+    const video = this.videoOf(item);
+    const box = parent.createDiv({ cls: "cld-video-poster cld-glass" });
+    const override = this.plugin.settings.coverOverrides[item.file.path] || "";
+    const coverUrl = this.plugin.indexer.resolveResource(override, item.file) || item.cover;
+    // A div, not a <button>: the dashboard's button styles would override the frame's size.
+    const stage = box.createDiv({ cls: "cld-video-poster-stage", attr: { role: "button", tabindex: "0", "aria-label": t("在 Obsidian 里播放") } });
+    if (coverUrl) stage.style.backgroundImage = `url("${coverUrl.replace(/"/g, "%22")}")`;
+    const play = stage.createSpan({ cls: "cld-video-poster-play" });
+    setIcon(play, "play");
+    // Frame follows the video's own shape (a 9:16 Bilibili video gets a tall frame, not black bars).
+    const savedAspect = Number(this.app.metadataCache.getFileCache(item.file)?.frontmatter?.aspect) || 0;
+    if (savedAspect > 0) this.applyVideoAspect(stage, savedAspect);
+    else if (video) {
+      void this.plugin.videoAspect(item.file).then((aspect) => {
+        if (aspect > 0 && stage.isConnected) this.applyVideoAspect(stage, aspect);
+      });
+    }
+    const bar = box.createDiv({ cls: "cld-video-poster-bar" });
+    const label = bar.createDiv();
+    label.createEl("small", { text: video ? `${t(VIDEO_PLATFORM_LABELS[video.platform])}${item.subtitle && item.subtitle !== item.source.name ? ` · ${item.subtitle}` : ""}` : t("视频") });
+    label.createEl("span", { text: t("点下面要点里的时间戳，播放器会跳到那个位置") });
+    const buttons = bar.createDiv({ cls: "cld-video-poster-actions" });
+    const mode = buttons.createEl("button", { cls: "cld-text-button", attr: { type: "button" } });
+    const updateMode = () => {
+      mode.setText(this.videoInline ? t("小窗播放") : t("回到页面内播放"));
+      mode.toggleClass("is-hidden", !(this.videoDock?.path === item.file.path));
+    };
+    mode.addEventListener("click", () => {
+      this.videoInline = !this.videoInline;
+      updateMode();
+      this.syncVideoDock();
+    });
+    if (video?.platform === "bilibili" && Platform.isDesktopApp) {
+      // Guests only get low quality; logging in inside Obsidian unlocks 720P/1080P.
+      const login = buttons.createEl("button", { cls: "cld-text-button", text: t("登录 B站提升清晰度"), attr: { type: "button", title: t("B站内嵌播放器不登录最高 360P") } });
+      login.addEventListener("click", () => {
+        openSiteLogin(this.app, t("登录 B站"), "https://passport.bilibili.com/login", (url) => !/passport\.bilibili\.com/i.test(url) && /bilibili\.com/i.test(url), () => this.reloadVideoDock(item));
+      });
+    }
+    if (video?.platform === "quark" && Platform.isDesktopApp) {
+      const login = buttons.createEl("button", { cls: "cld-text-button", text: t("登录夸克网盘"), attr: { type: "button" } });
+      login.addEventListener("click", () => {
+        openSiteLogin(this.app, t("登录夸克网盘"), "https://pan.quark.cn/", isQuarkLoggedInUrl, () => this.reloadVideoDock(item));
+      });
+    }
+    const open = buttons.createEl("button", { cls: "cld-text-button", text: t("浏览器打开 ↗"), attr: { type: "button" } });
+    open.addEventListener("click", () => {
+      const at = this.videoDock?.path === item.file.path ? this.videoDock.last : 0;
+      void openExternalUrl(video ? videoUrlAt(video.url, video.platform, at) : item.externalUrl);
+    });
+    if (!video) {
+      stage.addClass("is-disabled");
+      return;
+    }
+    this.setVideoAnchor(item.file.path, stage);
+    const start = () => {
+      this.videoInline = true;
+      this.playVideoInDock(item);
+      updateMode();
+    };
+    stage.addEventListener("click", start);
+    stage.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); start(); } });
+    // Opening a video note shows its player, without interrupting something already playing.
+    // (On mobile a 夸克网盘 video can only open in the browser, so it waits for a tap there.)
+    if (!this.youTubeDock && !(video.platform === "quark" && !Platform.isDesktopApp)) this.playVideoInDock(item, undefined, false);
+    updateMode();
+    this.syncVideoDock();
+  }
+
+  /** Reloads the video player (after logging in), or starts it if it isn't open. */
+  private reloadVideoDock(item: ContentItem): void {
+    const current = this.videoDock;
+    if (current && current.path === item.file.path && this.dockWebview?.isConnected) {
+      current.loaded = false;
+      if (current.platform === "quark") current.pendingSeek = current.last || null;
+      this.dockWebview.setAttribute("src", current.platform === "quark" ? current.url : biliPageUrl(current.videoId, current.part, current.last));
+      return;
+    }
+    if (current && current.path === item.file.path && this.dockFrame?.isConnected) {
+      this.dockFrame.src = videoEmbedUrl(current.platform, current.videoId, current.part, current.last, false);
+      return;
+    }
+    this.playVideoInDock(item, undefined, false);
+  }
+
+  private applyVideoAspect(stage: HTMLElement, aspect: number): void {
+    stage.style.setProperty("--cld-video-aspect", String(aspect));
+    stage.toggleClass("is-vertical", aspect < 1);
+    if (this.videoDock?.path === this.videoAnchor?.path && this.videoAnchor?.el === stage) {
+      this.youTubeDock?.style.setProperty("--cld-video-aspect", String(aspect));
+    }
+    this.syncVideoDock();
+  }
+
+  private setVideoAnchor(path: string, el: HTMLElement): void {
+    this.videoAnchor = { path, el };
+    this.videoAnchorObserver?.disconnect();
+    this.videoAnchorObserver = new ResizeObserver(() => this.syncVideoDock());
+    this.videoAnchorObserver.observe(el);
+  }
+
+  /** Lays the player over its note's top spot, or lets it float as the small window. */
+  private syncVideoDock(): void {
+    if (this.videoSyncQueued) return;
+    this.videoSyncQueued = true;
+    window.requestAnimationFrame(() => {
+      this.videoSyncQueued = false;
+      const dock = this.youTubeDock;
+      if (!dock) return;
+      const anchor = this.videoAnchor;
+      const host = this.containerEl.getBoundingClientRect();
+      const view = this.contentEl.getBoundingClientRect();
+      const rect = anchor?.el.isConnected ? anchor.el.getBoundingClientRect() : null;
+      const visible = rect && rect.height > 0
+        ? Math.max(0, Math.min(rect.bottom, view.bottom) - Math.max(rect.top, view.top)) / rect.height
+        : 0;
+      const inline = Boolean(this.videoInline && this.videoDock && anchor && anchor.path === this.videoDock.path && rect && visible >= 0.5);
+      if (inline && rect) {
+        dock.addClass("is-inline");
+        dock.setCssStyles({
+          left: `${rect.left - host.left}px`,
+          top: `${rect.top - host.top}px`,
+          width: `${rect.width}px`,
+          right: "auto",
+          bottom: "auto",
+          clipPath: `inset(${Math.max(0, view.top - rect.top)}px 0 ${Math.max(0, rect.bottom - view.bottom)}px 0 round 12px)`,
+        });
+        dock.style.setProperty("--cld-inline-height", `${rect.height}px`);
+        return;
+      }
+      if (!dock.hasClass("is-inline")) return;
+      dock.removeClass("is-inline");
+      dock.setCssStyles({ left: "", top: "", width: "", right: "", bottom: "", clipPath: "" });
+      dock.style.removeProperty("--cld-inline-height");
+      if (this.youTubeDockPosition) this.placeYouTubeDock(this.youTubeDockPosition.left, this.youTubeDockPosition.top);
+    });
+  }
+
+  /** Plays a video note in the floating player; with `seconds`, jumps there (and starts playing). */
+  private playVideoInDock(item: ContentItem, seconds?: number, autoplay = true): void {
+    const video = this.videoOf(item);
+    if (!video) {
+      if (item.externalUrl) void openExternalUrl(item.externalUrl);
+      return;
+    }
+    const current = this.videoDock;
+    if (current && current.path === item.file.path && this.dockWebview?.isConnected) {
+      if (this.youTubeDockMinimized) {
+        this.youTubeDockMinimized = false;
+        this.youTubeDock?.removeClass("is-minimized");
+      }
+      if (seconds === undefined) return;
+      current.last = seconds;
+      if (current.loaded) void this.dockWebview.executeJavaScript(webSeekScript(seconds)).catch(() => undefined);
+      else if (current.platform === "bilibili") this.dockWebview.setAttribute("src", biliPageUrl(current.videoId, current.part, seconds));
+      else current.pendingSeek = seconds;
+      return;
+    }
+    if (current && current.path === item.file.path && this.dockFrame?.isConnected) {
+      if (this.youTubeDockMinimized) {
+        this.youTubeDockMinimized = false;
+        this.youTubeDock?.removeClass("is-minimized");
+      }
+      if (seconds === undefined) return;
+      current.last = seconds;
+      if (current.platform === "youtube" && current.loaded && this.dockFrame.contentWindow) {
+        const target = this.dockFrame.contentWindow;
+        target.postMessage(JSON.stringify({ event: "command", func: "seekTo", args: [seconds, true], id: 1, channel: "widget" }), "*");
+        target.postMessage(JSON.stringify({ event: "command", func: "playVideo", args: [], id: 1, channel: "widget" }), "*");
+      } else {
+        // Bilibili's player has no seek API for embeds: reload it at the new time.
+        this.dockFrame.src = videoEmbedUrl(current.platform, current.videoId, current.part, seconds, true);
+      }
+      return;
+    }
+    this.stopMusicQueue();
+    const start = seconds ?? 0;
+    const src = videoEmbedUrl(video.platform, video.videoId, video.part, start, autoplay || seconds !== undefined);
+    if (video.platform === "quark" && !Platform.isDesktopApp) {
+      void openExternalUrl(video.url);
+      return;
+    }
+    const state = { path: item.file.path, ...video, loaded: false, last: start, pendingSeek: video.platform === "quark" && start > 0 ? start : null as number | null };
+    const playNow = autoplay || seconds !== undefined;
+    let webview: BiliWebview | null = null;
+    if (video.platform === "bilibili" && Platform.isDesktopApp) {
+      webview = createBiliWebview(video.videoId, video.part, start, playNow, () => { state.loaded = true; });
+    } else if (video.platform === "quark") {
+      webview = createQuarkWebview(video.url, playNow, (view) => {
+        state.loaded = true;
+        if (state.pendingSeek !== null) {
+          void view.executeJavaScript(webSeekScript(state.pendingSeek)).catch(() => undefined);
+          state.pendingSeek = null;
+        }
+        void this.adoptQuarkTitle(item, view);
+      }, () => {
+        // Not signed in: show the big centred login window instead of the cramped player.
+        if (this.quarkLoginOpen) return;
+        this.quarkLoginOpen = true;
+        openSiteLogin(this.app, t("登录夸克网盘"), "https://pan.quark.cn/", isQuarkLoggedInUrl, () => {
+          this.quarkLoginOpen = false;
+          this.reloadVideoDock(item);
+        });
+      });
+    }
+    this.openPlayerDock(item.title, src, () => videoUrlAt(state.url, state.platform, state.last), null, false, webview);
+    this.videoDock = state;
+    this.youTubeDock?.addClass("is-video");
+    const aspect = Number(this.app.metadataCache.getFileCache(item.file)?.frontmatter?.aspect) || 0;
+    if (aspect > 0) this.youTubeDock?.style.setProperty("--cld-video-aspect", String(aspect));
+    this.syncVideoDock();
+    const frame = this.dockFrame as HTMLIFrameElement | null;
+    frame?.addEventListener("load", () => {
+      state.loaded = true;
+      if (state.platform === "youtube") frame.contentWindow?.postMessage(JSON.stringify({ event: "listening", id: 1, channel: "widget" }), "*");
+    });
+  }
+
+  /** A new 夸克网盘 video note is named after the file shown in Quark's player. */
+  private async adoptQuarkTitle(item: ContentItem, view: BiliWebview): Promise<void> {
+    const title = String(this.app.metadataCache.getFileCache(item.file)?.frontmatter?.title || "");
+    if (title && title !== QUARK_PLACEHOLDER_TITLE && title !== t(QUARK_PLACEHOLDER_TITLE)) return;
+    try {
+      const name = String(await view.executeJavaScript(QUARK_TITLE_SCRIPT) || "").trim();
+      if (!name) return;
+      await this.plugin.setVideoTitle(item.file, name);
+      new Notice(t("已识别视频名称：{name}", { name }));
+    } catch {
+      // Keep the placeholder; the user can rename the note.
+    }
+  }
+
+  private confirmDeleteVideo(item: ContentItem): void {
+    new ConfirmDeleteModal(this.app, item.title, async () => {
+      if (this.videoDock?.path === item.file.path) this.closeYouTubeDock();
+      await this.plugin.deletePodcastEpisodeNote(item.file);
+      if (this.selected?.id === item.id) {
+        this.selected = null;
+        this.detailOpen = false;
+      }
+      new Notice(t("已删除：{name}（可在废纸篓恢复）", { name: item.title }));
+      await this.refresh();
+    }).open();
   }
 
   private renderFollowedShows(main: HTMLElement, shows: PodcastSubscription[], episodes: ContentItem[]): void {
@@ -1032,7 +1346,7 @@ export class ContentLibraryView extends ItemView {
   }
 
   /** Floating player shared by YouTube and NetEase. frameHeight null = 16:9 video. */
-  private openPlayerDock(title: string, src: string, externalUrl: string, frameHeight: number | null, queued = false): void {
+  private openPlayerDock(title: string, src: string, externalUrl: string | (() => string), frameHeight: number | null, queued = false, webview: BiliWebview | null = null): void {
     this.closeYouTubeDock();
     this.containerEl.addClass("cld-has-yt-dock");
     const dock = this.containerEl.createDiv({ cls: "cld-yt-dock" });
@@ -1052,14 +1366,19 @@ export class ContentLibraryView extends ItemView {
     const minimize = bar.createEl("button", { cls: "cld-icon-button", attr: { type: "button" } });
     const open = bar.createEl("button", { cls: "cld-icon-button", attr: { type: "button", "aria-label": t("浏览器打开 ↗") } });
     setIcon(open, "external-link");
-    open.addEventListener("click", () => void openExternalUrl(externalUrl));
+    open.addEventListener("click", () => void openExternalUrl(typeof externalUrl === "function" ? externalUrl() : externalUrl));
     const close = bar.createEl("button", { cls: "cld-icon-button", attr: { type: "button", "aria-label": t("关闭播放器") } });
     setIcon(close, "x");
     close.addEventListener("click", () => {
       this.stopMusicQueue();
       this.closeYouTubeDock();
     });
-    const frame = dock.createEl("iframe", {
+    if (webview) {
+      // A full web page (B站's own player) instead of an embed iframe.
+      webview.addClass("cld-yt-dock-frame");
+      dock.appendChild(webview);
+    }
+    const frame = webview ? null : dock.createEl("iframe", {
       cls: "cld-yt-dock-frame",
       attr: {
         src,
@@ -1069,9 +1388,10 @@ export class ContentLibraryView extends ItemView {
         allowfullscreen: "true",
       },
     });
-    frame.setAttribute("frameborder", "0");
+    frame?.setAttribute("frameborder", "0");
     this.dockFrame = frame;
-    if (queued && !frameHeight) {
+    this.dockWebview = webview;
+    if (queued && !frameHeight && frame) {
       // Ask the YouTube player to report state changes back to us.
       frame.addEventListener("load", () => {
         const target = frame.contentWindow;
@@ -1145,11 +1465,14 @@ export class ContentLibraryView extends ItemView {
   }
 
   private clampYouTubeDock(): void {
+    if (this.youTubeDock?.hasClass("is-inline")) return;
     if (this.youTubeDockPosition) this.placeYouTubeDock(this.youTubeDockPosition.left, this.youTubeDockPosition.top);
   }
 
   private closeYouTubeDock(): void {
     this.dockFrame = null;
+    this.dockWebview = null;
+    this.videoDock = null;
     this.youTubeDock?.remove();
     this.youTubeDock = null;
     this.containerEl.removeClass("cld-has-yt-dock");
@@ -1378,16 +1701,16 @@ export class ContentLibraryView extends ItemView {
       cover.addClass("has-image");
       cover.style.backgroundImage = `url("${coverUrl.replace(/"/g, "%22")}")`;
     }
-    if ((item.kind === "podcast" || item.kind === "podlink") && coverUrl) {
+    if ((item.kind === "podcast" || item.kind === "podlink" || item.kind === "video") && coverUrl) {
       const cover = button.querySelector<HTMLElement>(".cld-card-cover");
       if (!cover) return;
       cover.addClass("has-podcast-badge");
       const badge = cover.createDiv({ cls: "cld-podcast-card-badge" });
       const badgeIcon = badge.createSpan();
       setIcon(badgeIcon, "play");
-      badge.createSpan({ text: t("播客") });
+      badge.createSpan({ text: item.kind === "video" ? this.videoCardLabel(item) : t("播客") });
     }
-    if (item.externalUrl && coverUrl && item.kind !== "podlink") {
+    if (item.externalUrl && coverUrl && item.kind !== "podlink" && item.kind !== "video") {
       const cover = button.querySelector<HTMLElement>(".cld-card-cover");
       if (!cover) return;
       const host = cover.createEl("small", { cls: "cld-web-host", text: webHost(item.externalUrl) });
@@ -1400,14 +1723,16 @@ export class ContentLibraryView extends ItemView {
       const progress = cover.createDiv({ cls: "cld-cover-progress" });
       progress.createSpan().style.width = `${item.progress}%`;
     }
-    if (item.kind === "podlink") {
+    if (item.kind === "podlink" || item.kind === "video") {
       // A span, not a button: the whole card is already a button.
-      const remove = button.createSpan({ cls: "cld-card-delete", attr: { role: "button", tabindex: "0", "aria-label": t("删除这一期"), title: t("删除这一期") } });
+      const removeLabel = item.kind === "video" ? t("删除这个视频") : t("删除这一期");
+      const remove = button.createSpan({ cls: "cld-card-delete", attr: { role: "button", tabindex: "0", "aria-label": removeLabel, title: removeLabel } });
       setIcon(remove, "trash-2");
       const onRemove = (event: Event) => {
         event.preventDefault();
         event.stopPropagation();
-        this.confirmDeletePodcastEpisode(item);
+        if (item.kind === "video") this.confirmDeleteVideo(item);
+        else this.confirmDeletePodcastEpisode(item);
       };
       remove.addEventListener("click", onRemove);
       remove.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") onRemove(event); });
@@ -1425,6 +1750,14 @@ export class ContentLibraryView extends ItemView {
       void this.refresh();
     });
     button.addEventListener("contextmenu", (event) => this.showItemMenu(event, item));
+  }
+
+  /** "B站 · 32:10" on a video card. */
+  private videoCardLabel(item: ContentItem): string {
+    const frontmatter = (this.app.metadataCache.getFileCache(item.file)?.frontmatter ?? {}) as Record<string, unknown>;
+    const platform = frontmatter.platform === "youtube" || frontmatter.platform === "bilibili" || frontmatter.platform === "quark" ? t(VIDEO_PLATFORM_LABELS[frontmatter.platform]) : t("视频");
+    const duration = typeof frontmatter.duration === "string" ? frontmatter.duration : "";
+    return duration ? `${platform} · ${duration}` : platform;
   }
 
   private cardExcerptFallback(item: ContentItem): string {
@@ -1484,7 +1817,7 @@ export class ContentLibraryView extends ItemView {
       : progress > 0 || saved?.state === "in-progress" ? "in-progress" : "unread";
     element.addClass(`is-${state}`);
         if (state === "complete") {
-      const doneLabel = isListening(item) ? t("已听完") : t("已读完");
+      const doneLabel = isWatching(item) ? t("已看完") : isListening(item) ? t("已听完") : t("已读完");
       element.setAttr("aria-label", doneLabel);
       element.setAttr("title", doneLabel);
       setIcon(element, "check");
@@ -1495,8 +1828,8 @@ export class ContentLibraryView extends ItemView {
       element.createSpan({ cls: "cld-status-progress", text: `${Math.max(1, Math.round(progress))}%` });
     }
     const label = state === "in-progress"
-      ? isListening(item) ? t("收听中") : t("阅读中")
-      : isListening(item) ? t("未听") : t("未读");
+      ? isWatching(item) ? t("观看中") : isListening(item) ? t("收听中") : t("阅读中")
+      : isWatching(item) ? t("未看") : isListening(item) ? t("未听") : t("未读");
     element.setAttr("aria-label", label);
     element.setAttr("title", label);
   }
@@ -1512,8 +1845,8 @@ export class ContentLibraryView extends ItemView {
     event.preventDefault();
     const menu = new Menu();
     const progress = this.plugin.contentProgress(item.file);
-    const completeLabel = isListening(item) ? t("标记为已听完") : t("标记为已读");
-    const resetLabel = isListening(item) ? t("重新设为未听") : t("重新设为未读");
+    const completeLabel = isWatching(item) ? t("标记为已看完") : isListening(item) ? t("标记为已听完") : t("标记为已读");
+    const resetLabel = isWatching(item) ? t("重新设为未看") : isListening(item) ? t("重新设为未听") : t("重新设为未读");
     if (progress?.state !== "complete") {
       menu.addItem((entry) => entry.setTitle(completeLabel).setIcon("check").onClick(async () => {
         await this.plugin.markContentComplete(item.file);
@@ -1529,6 +1862,9 @@ export class ContentLibraryView extends ItemView {
     menu.addItem((entry) => entry.setTitle("Open source note").setIcon("file-text").onClick(() => void this.openFile(item.file)));
     if (item.kind === "podlink") {
       menu.addItem((entry) => entry.setTitle(t("删除这一期")).setIcon("trash-2").onClick(() => this.confirmDeletePodcastEpisode(item)));
+    }
+    if (item.kind === "video") {
+      menu.addItem((entry) => entry.setTitle(t("删除这个视频")).setIcon("trash-2").onClick(() => this.confirmDeleteVideo(item)));
     }
     if (item.externalUrl) menu.addItem((entry) => entry.setTitle("Open original link").setIcon("external-link").onClick(() => window.open(item.externalUrl, "_blank")));
     menu.addItem((entry) => entry.setTitle("Set cover path").setIcon("image-plus").onClick(() => {
@@ -1588,6 +1924,7 @@ export class ContentLibraryView extends ItemView {
     if (continuingPodcast) this.renderContinuedPodcastPlayer(parent, this.articleReturnItem!);
     else if (audioUrl) this.renderReadingAudioPlayer(parent, item, audioUrl);
     else if (item.kind === "podlink") this.renderPodcastEmbed(parent, item);
+    else if (item.kind === "video") this.renderVideoPoster(parent, item);
     const grid = parent.createDiv({ cls: "cld-reader-grid" });
     const header = grid.createEl("header", { cls: "cld-reader-header" });
     const headerCopy = header.createDiv();
@@ -1621,17 +1958,22 @@ export class ContentLibraryView extends ItemView {
       weave.addEventListener("click", () => this.executeCommand("weave-epub-reader:open-active-epub-reader"));
     }
     if (item.externalUrl) {
-      const original = headerActions.createEl("button", { cls: "cld-text-button", text: item.kind === "podlink" ? t("在平台中打开 ↗") : t("打开原始网页"), attr: { type: "button" } });
+      const original = headerActions.createEl("button", { cls: "cld-text-button", text: item.kind === "podlink" || item.kind === "video" ? t("在平台中打开 ↗") : t("打开原始网页"), attr: { type: "button" } });
       original.addEventListener("click", () => window.open(item.externalUrl, "_blank"));
     }
     if (item.kind === "podlink") {
       const remove = headerActions.createEl("button", { cls: "cld-text-button cld-danger-button", text: t("删除这一期"), attr: { type: "button" } });
       remove.addEventListener("click", () => this.confirmDeletePodcastEpisode(item));
     }
+    if (item.kind === "video") {
+      const remove = headerActions.createEl("button", { cls: "cld-text-button cld-danger-button", text: t("删除这个视频"), attr: { type: "button" } });
+      remove.addEventListener("click", () => this.confirmDeleteVideo(item));
+    }
     if (!this.articleReturnItem) this.renderReadingNavigation(headerActions, item);
     const article = grid.createEl("article", { cls: "cld-reading-page markdown-rendered" });
     await MarkdownRenderer.render(this.app, content, article, item.file.path, this);
     if (item.kind === "podlink" && audioUrl && !continuingPodcast) this.linkShowNoteTimestamps(article);
+    if (item.kind === "video") this.linkShowNoteTimestamps(article, (seconds) => this.playVideoInDock(item, seconds));
     await this.applyAnnotationHighlights(article, item);
     article.setAttr("tabindex", "0");
     this.setupReadingCompletion(item, readState);
@@ -2106,7 +2448,7 @@ export class ContentLibraryView extends ItemView {
   }
 
   /** Turns "05:30" / "1:02:03" in show notes into buttons that jump the player there. */
-  private linkShowNoteTimestamps(article: HTMLElement): void {
+  private linkShowNoteTimestamps(article: HTMLElement, onSeek?: (seconds: number) => void): void {
     const pattern = /(?<![\d:])(?:\d{1,2}:)?\d{1,2}:\d{2}(?![\d:])/g;
     const walker = document.createTreeWalker(article, NodeFilter.SHOW_TEXT, {
       acceptNode: (node) => node.parentElement?.closest("a, code, pre, button") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
@@ -2125,7 +2467,10 @@ export class ContentLibraryView extends ItemView {
         fragment.append(node.data.slice(last, index));
         const stamp = createEl("button", { cls: "cld-timestamp", text: match[0], attr: { type: "button", title: t("跳到 {time} 播放", { time: match[0] }) } });
         const seconds = timestampSeconds(match[0]);
-        stamp.addEventListener("click", () => void this.seekReadingAudio(seconds));
+        stamp.addEventListener("click", () => {
+          if (onSeek) onSeek(seconds);
+          else void this.seekReadingAudio(seconds);
+        });
         fragment.append(stamp);
         last = index + match[0].length;
       }
@@ -2897,6 +3242,10 @@ function isListening(item: ContentItem): boolean {
   return item.kind === "podcast" || item.kind === "podlink";
 }
 
+function isWatching(item: ContentItem): boolean {
+  return item.kind === "video";
+}
+
 function isQqMusicUrl(url: string): boolean {
   return /(?:^|\/)(?:y\.qq\.com|i\.y\.qq\.com|c6\.y\.qq\.com)\//i.test(url);
 }
@@ -3082,6 +3431,354 @@ class PodcastLinkModal extends Modal {
       } catch (error) {
         console.warn("[Content Library] Podcast link failed", error);
         new Notice(t("没能读取这个链接，请确认是单集或节目的公开分享链接。"), 6000);
+        create.disabled = false;
+        create.setText(t("添加"));
+      }
+    });
+    window.setTimeout(() => input.focus(), 0);
+  }
+
+  override onClose(): void {
+    this.contentEl.empty();
+  }
+}
+
+type BiliWebview = HTMLElement & {
+  executeJavaScript(code: string): Promise<unknown>;
+  insertCSS(css: string): Promise<string>;
+};
+
+function biliPageUrl(bvid: string, part: number, start: number): string {
+  const params = new URLSearchParams();
+  if (part > 1) params.set("p", String(part));
+  if (start > 0) params.set("t", String(Math.floor(start)));
+  const query = params.toString();
+  return `https://www.bilibili.com/video/${bvid}/${query ? `?${query}` : ""}`;
+}
+
+/** Only B站's player is shown: it is pinned over the whole page and everything else hidden. */
+const BILI_PLAYER_CSS = `
+html, body { overflow: hidden !important; background: #000 !important; }
+#bilibili-player, .bpx-player-container, #playerWrap, .player-wrap {
+  position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100vh !important;
+  max-width: none !important; max-height: none !important; margin: 0 !important; z-index: 2147483000 !important;
+}
+.bpx-player-container .bpx-player-sending-area, .bili-header, #biliMainHeader, .fixed-sidenav-storage,
+.bili-mini-mask, .login-tip, .vip-login-tip { display: none !important; }
+`;
+
+/**
+ * Pages in the player that try to open a new window (window.open, target="_blank") would be sent
+ * to the system browser by Obsidian; open them in the player instead.
+ */
+const KEEP_INSIDE_SCRIPT = `(() => {
+  if (window.__cldKeepInside) return;
+  window.__cldKeepInside = true;
+  window.open = function (url) {
+    if (url) location.href = new URL(String(url), location.href).href;
+    return window;
+  };
+  document.addEventListener("click", (event) => {
+    const link = event.target && event.target.closest ? event.target.closest("a[target]") : null;
+    if (link && link.href && link.target !== "_self") {
+      event.preventDefault();
+      location.href = link.href;
+    }
+  }, true);
+})()`;
+
+/** Seeks the page's <video> (waiting up to ~15 s for it to appear) and plays. */
+function webSeekScript(seconds: number): string {
+  return `(() => {
+    let tries = 0;
+    const go = () => {
+      const v = document.querySelector("video");
+      if (v && v.readyState >= 1) { v.currentTime = ${Math.floor(seconds)}; v.play(); return; }
+      if (v && !v.dataset.cldSeek) { v.dataset.cldSeek = "1"; v.addEventListener("loadedmetadata", () => { v.currentTime = ${Math.floor(seconds)}; v.play(); }, { once: true }); }
+      if (++tries < 60) setTimeout(go, 250);
+    };
+    go();
+  })()`;
+}
+
+/**
+ * Quark's page layout is not public, so instead of hiding known parts this finds the box that
+ * holds the <video> and its controls and pins it over the whole page. Re-checked while the page loads.
+ */
+const QUARK_FOCUS_SCRIPT = `(() => {
+  if (window.__cldFocus) return;
+  // Only the video player page; never the login or file list pages.
+  if (!/#\\/video\\//.test(location.href)) return;
+  window.__cldFocus = true;
+  const style = document.createElement("style");
+  style.textContent = "html,body{overflow:hidden!important;background:#000!important}" +
+    ".cld-focus-player{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;margin:0!important;z-index:2147483000!important;background:#000!important}" +
+    ".cld-focus-player video{width:100%!important;height:100%!important;object-fit:contain!important}";
+  document.head.appendChild(style);
+  const pick = () => {
+    const video = document.querySelector("video");
+    if (!video) return null;
+    const box = video.getBoundingClientRect();
+    let el = video;
+    // Climb while the parent is still about the video's own size (the player shell with its controls).
+    while (el.parentElement && el.parentElement !== document.body) {
+      const r = el.parentElement.getBoundingClientRect();
+      if (r.width > box.width * 1.15 || r.height > box.height * 1.35) break;
+      el = el.parentElement;
+    }
+    return el;
+  };
+  let current = null;
+  const apply = () => {
+    const el = pick();
+    if (!el || el === current) return;
+    if (current) current.classList.remove("cld-focus-player");
+    el.classList.add("cld-focus-player");
+    current = el;
+  };
+  apply();
+  new MutationObserver(apply).observe(document.documentElement, { childList: true, subtree: true });
+})()`;
+
+/** File name of the video shown on Quark's player page (e.g. "Lecture 3.mp4"), without the extension. */
+const QUARK_TITLE_SCRIPT = `(() => {
+  const pattern = /\\.(mp4|mkv|mov|avi|flv|wmv|m4v|webm|ts|rmvb|3gp)$/i;
+  const nodes = Array.from(document.querySelectorAll("h1,h2,h3,div,span,p"));
+  for (const node of nodes) {
+    if (node.children.length) continue;
+    const text = (node.textContent || "").trim();
+    if (text.length < 200 && pattern.test(text)) return text.replace(pattern, "");
+  }
+  const title = (document.title || "").replace(/[-|｜_]?\\s*夸克网盘.*$/, "").trim();
+  return pattern.test(title) ? title.replace(pattern, "") : "";
+})()`;
+
+/** Quark moves to the file list (/list) once signed in. */
+function isQuarkLoggedInUrl(url: string): boolean {
+  return /pan\.quark\.cn\/list/i.test(url);
+}
+
+/** True when Quark is showing its login screen instead of the drive (not signed in inside Obsidian). */
+const QUARK_LOGIN_CHECK_SCRIPT = `(() => {
+  const text = document.body ? document.body.innerText || "" : "";
+  return /扫码登录|手机登录|请使用夸克网盘\\s*APP|登录表示您已阅读/.test(text) && !document.querySelector("video[src], video source");
+})()`;
+
+function createQuarkWebview(url: string, autoplay: boolean, onReady: (view: BiliWebview) => void, onLoginNeeded: () => void): BiliWebview {
+  const webview = document.createElement("webview") as BiliWebview;
+  webview.setAttribute("src", url);
+  let first = true;
+  webview.addEventListener("dom-ready", () => {
+    void webview.executeJavaScript(KEEP_INSIDE_SCRIPT).catch(() => undefined);
+    const autoplayNow = first && !autoplay;
+    first = false;
+    // The page builds itself after loading; give it a moment before deciding what it shows.
+    window.setTimeout(() => {
+      void (webview.executeJavaScript(QUARK_LOGIN_CHECK_SCRIPT) as Promise<boolean>).then((needsLogin) => {
+        if (needsLogin) {
+          onLoginNeeded();
+          return;
+        }
+        void webview.executeJavaScript(QUARK_FOCUS_SCRIPT).catch(() => undefined);
+        if (autoplayNow) void webview.executeJavaScript(BILI_PAUSE_SCRIPT).catch(() => undefined);
+        window.setTimeout(() => onReady(webview), 800);
+      }).catch(() => onReady(webview));
+    }, 1200);
+  });
+  return webview;
+}
+
+/** Stops B站's own autoplay once, when the note is only being opened (not a timestamp click). */
+const BILI_PAUSE_SCRIPT = `(() => {
+  let tries = 0;
+  const timer = setInterval(() => {
+    const v = document.querySelector("video");
+    tries += 1;
+    if (v && !v.paused) { v.pause(); clearInterval(timer); }
+    if (tries > 40) clearInterval(timer);
+  }, 250);
+})()`;
+
+function createBiliWebview(bvid: string, part: number, start: number, autoplay: boolean, onReady: () => void): BiliWebview {
+  const webview = document.createElement("webview") as BiliWebview;
+  webview.setAttribute("src", biliPageUrl(bvid, part, start));
+  let first = true;
+  webview.addEventListener("dom-ready", () => {
+    void webview.executeJavaScript(KEEP_INSIDE_SCRIPT).catch(() => undefined);
+    void webview.insertCSS(BILI_PLAYER_CSS).catch(() => undefined);
+    if (first && !autoplay) void webview.executeJavaScript(BILI_PAUSE_SCRIPT).catch(() => undefined);
+    first = false;
+    onReady();
+  });
+  return webview;
+}
+
+/**
+ * Bilibili login inside Obsidian. The page runs in a <webview> on Obsidian's own session, so the
+ * login cookie is the one the embedded player sends; it then offers 720P/1080P instead of 360P.
+ */
+type ElectronWindow = {
+  loadURL(url: string): Promise<void>;
+  on(event: "closed", listener: () => void): void;
+  close(): void;
+  isDestroyed(): boolean;
+  webContents: { getURL(): string; on(event: string, listener: (...args: unknown[]) => void): void; setWindowOpenHandler(handler: (details: { url: string }) => { action: "deny" | "allow" }): void };
+};
+type ElectronRemote = { BrowserWindow: new (options: Record<string, unknown>) => ElectronWindow; getCurrentWindow(): unknown };
+
+function electronRemote(): ElectronRemote | null {
+  try {
+    const load = (window as unknown as { require?: (id: string) => unknown }).require;
+    if (!load) return null;
+    const electron = load("electron") as { remote?: ElectronRemote } | undefined;
+    if (electron?.remote?.BrowserWindow) return electron.remote;
+    const remote = load("@electron/remote") as ElectronRemote | undefined;
+    return remote?.BrowserWindow ? remote : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Opens a site's login page in its own full-size window, centred on screen. It shares Obsidian's
+ * session, so the login is what the players use. Closes itself once `loggedIn(url)` is true.
+ * Falls back to an in-app window where a separate window isn't available.
+ */
+function openSiteLogin(app: App, heading: string, loginUrl: string, loggedIn: (url: string) => boolean, onDone: () => void): void {
+  const remote = electronRemote();
+  if (!remote) {
+    new SiteLoginModal(app, heading, loginUrl, onDone).open();
+    return;
+  }
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    onDone();
+  };
+  try {
+    const win = new remote.BrowserWindow({
+      width: 1180,
+      height: 780,
+      center: true,
+      title: heading,
+      parent: remote.getCurrentWindow(),
+      autoHideMenuBar: true,
+      webPreferences: { contextIsolation: true, nodeIntegration: false },
+    });
+    // Keep everything in this window (Obsidian would send new windows to the browser).
+    win.webContents.setWindowOpenHandler(({ url }) => {
+      void win.loadURL(url);
+      return { action: "deny" };
+    });
+    const check = () => {
+      if (win.isDestroyed()) return;
+      if (loggedIn(win.webContents.getURL())) {
+        new Notice(t("登录成功"));
+        window.setTimeout(() => { if (!win.isDestroyed()) win.close(); }, 600);
+      }
+    };
+    win.webContents.on("did-navigate", check);
+    win.webContents.on("did-navigate-in-page", check);
+    win.on("closed", finish);
+    void win.loadURL(loginUrl);
+  } catch (error) {
+    console.warn("[Content Library] Login window failed, using the in-app one", error);
+    if (!finished) new SiteLoginModal(app, heading, loginUrl, onDone).open();
+  }
+}
+
+class SiteLoginModal extends Modal {
+  constructor(app: App, private heading: string, private loginUrl: string, private onDone: () => void) {
+    super(app);
+  }
+
+  override onOpen(): void {
+    const { contentEl, modalEl } = this;
+    contentEl.empty();
+    modalEl.addClass("cld-bili-login-modal");
+    contentEl.createEl("h2", { text: this.heading });
+    contentEl.createEl("p", { cls: "setting-item-description", text: t("登录后点“完成”，播放器会重新加载，之后就可以在播放器右下角选清晰度。登录只保存在这台电脑的 Obsidian 里。") });
+    const webview = document.createElement("webview");
+    webview.addClass("cld-bili-login-view");
+    webview.setAttribute("src", this.loginUrl);
+    webview.setAttribute("allowpopups", "");
+    contentEl.appendChild(webview);
+    // Login pages are laid out for a wide desktop window: zoom out to fit so nothing is cut off.
+    webview.addEventListener("dom-ready", () => {
+      const zoom = Math.max(0.6, Math.min(1, webview.clientWidth / 1280, webview.clientHeight / 760));
+      (webview as unknown as { setZoomFactor(factor: number): void }).setZoomFactor(zoom);
+    });
+    const actions = contentEl.createDiv({ cls: "cld-note-modal-actions" });
+    const done = actions.createEl("button", { cls: "mod-cta", text: t("完成"), attr: { type: "button" } });
+    done.addEventListener("click", () => this.close());
+  }
+
+  override onClose(): void {
+    this.contentEl.empty();
+    this.onDone();
+  }
+}
+
+class VideoLinkModal extends Modal {
+  constructor(
+    app: App,
+    private sourceName: string,
+    private onSubmitLink: (link: string, title: string) => Promise<void>,
+  ) {
+    super(app);
+  }
+
+  override onOpen(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass("cld-note-modal");
+    contentEl.createEl("h2", { text: t("添加视频") });
+    contentEl.createEl("p", { text: `${t("保存到：{name}", { name: this.sourceName })} · ${t("可以直接粘贴 App 里复制的分享文字")}` });
+    const form = contentEl.createEl("form", { cls: "cld-note-modal-form" });
+    const input = form.createEl("input", {
+      cls: "cld-note-title-input",
+      attr: { type: "text", placeholder: t("YouTube / B站 / 夸克网盘链接，或 BV 号"), autocomplete: "off", "aria-label": t("视频链接") },
+    });
+    // 夸克网盘 has no public metadata: the name can be typed, or is read from the player later.
+    const quarkHint = form.createEl("p", { cls: "setting-item-description", text: t("夸克网盘：在网页版打开视频，复制地址栏的链接（pan.quark.cn/list#/video/…）。") });
+    const titleInput = form.createEl("input", {
+      cls: "cld-note-title-input",
+      attr: { type: "text", placeholder: t("视频名称（可不填，第一次播放时自动读取）"), autocomplete: "off", "aria-label": t("视频名称") },
+    });
+    quarkHint.hide();
+    titleInput.hide();
+    input.addEventListener("input", () => {
+      const isQuark = videoPlatform(extractVideoUrl(input.value)) === "quark";
+      quarkHint.toggle(isQuark);
+      titleInput.toggle(isQuark);
+    });
+    const actions = form.createDiv({ cls: "cld-note-modal-actions" });
+    const cancel = actions.createEl("button", { text: t("取消"), attr: { type: "button" } });
+    const create = actions.createEl("button", { cls: "mod-cta", text: t("添加"), attr: { type: "submit" } });
+    cancel.addEventListener("click", () => this.close());
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const link = extractVideoUrl(input.value);
+      const platform = videoPlatform(link);
+      if (!platform) {
+        new Notice(t("请粘贴 YouTube、B站或夸克网盘的视频链接。"));
+        input.focus();
+        return;
+      }
+      if (platform === "quark" && !quarkVideoId(link)) {
+        new Notice(t("请在夸克网盘网页版打开视频后，复制地址栏里带 #/video/ 的链接。"), 6000);
+        input.focus();
+        return;
+      }
+      create.disabled = true;
+      create.setText(t("获取中…"));
+      try {
+        await this.onSubmitLink(link, platform === "quark" ? titleInput.value : "");
+        this.close();
+      } catch (error) {
+        console.warn("[Content Library] Video link failed", error);
+        new Notice(t("没能读取这个视频，请确认链接是公开视频，并检查网络。"), 6000);
         create.disabled = false;
         create.setText(t("添加"));
       }

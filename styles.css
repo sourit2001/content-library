@@ -2119,6 +2119,57 @@
   border-radius: 50%;
 }
 /* 播客收藏: Spotify embed and clickable show-note timestamps */
+/* 视频收藏: cover with a play button at the top of a video note; playback is in the floating dock. */
+.cld-video-poster { margin-bottom: 16px; padding: 10px; border-radius: 18px; }
+.cld-video-poster-stage {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Always 16:9: on wide panes the width is capped by the height limit and the player is centred. */
+  width: min(100%, calc(70vh * var(--cld-video-aspect, 1.7778)));
+  height: auto;
+  margin: 0 auto;
+  aspect-ratio: var(--cld-video-aspect, 1.7778);
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--background-modifier-hover) 80%, transparent) center / cover no-repeat;
+  box-shadow: none;
+  cursor: pointer;
+  overflow: hidden;
+}
+.cld-video-poster-stage::after { content: ""; position: absolute; inset: 0; background: rgba(0, 0, 0, 0.18); transition: background 0.15s ease; }
+.cld-video-poster-stage:hover::after { background: rgba(0, 0, 0, 0.08); }
+.cld-video-poster-stage.is-disabled { cursor: default; }
+.cld-video-poster-play {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.88);
+  color: #1d1d1f;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+}
+.cld-video-poster-play svg { width: 28px; height: 28px; margin-left: 3px; }
+.cld-video-poster-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 4px 2px; }
+.cld-video-poster-bar > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cld-video-poster-bar small { color: var(--cld-muted); }
+.cld-video-poster-actions { display: flex; flex-shrink: 0; gap: 6px; }
+.cld-video-poster-actions .is-hidden { display: none; }
+/* The floating player laid over the top of its video note. */
+.cld-yt-dock.is-inline { border: 0; border-radius: 12px; box-shadow: none; background: #000; }
+.cld-yt-dock.is-inline .cld-yt-dock-bar { display: none; }
+/* Small window for a video keeps the video's shape; tall videos get a narrower window. */
+.cld-yt-dock.is-video { width: min(300px, calc(55vh * var(--cld-video-aspect, 1.7778)), calc(100% - 32px)); }
+.cld-yt-dock.is-video.is-large { width: min(480px, calc(75vh * var(--cld-video-aspect, 1.7778)), calc(100% - 32px)); }
+.cld-yt-dock.is-video .cld-yt-dock-frame { aspect-ratio: var(--cld-video-aspect, 1.7778); }
+.cld-yt-dock.is-inline .cld-yt-dock-frame { aspect-ratio: auto; height: var(--cld-inline-height, auto) !important; }
+.cld-video-poster-bar span { font-size: var(--font-ui-smaller); color: var(--text-muted); }
 .cld-podcast-embed { margin-bottom: 16px; padding: 10px; border-radius: 18px; }
 .cld-podcast-embed iframe { display: block; width: 100%; border: 0; border-radius: 12px; }
 .cld-podcast-embed p { margin: 0 0 8px; color: var(--cld-muted); }
@@ -2484,3 +2535,15 @@
   color: var(--cld-muted);
   background: color-mix(in srgb, var(--cld-ink) 9%, transparent);
 }
+
+/* B站 login window (webview on Obsidian's own session) */
+.modal.cld-bili-login-modal {
+  --dialog-width: min(1100px, 94vw);
+  --dialog-max-width: 94vw;
+  width: min(1100px, 94vw) !important;
+  max-width: 94vw !important;
+}
+.cld-bili-login-view { display: flex; width: 100%; height: min(720px, 76vh); border-radius: 10px; overflow: hidden; background: #fff; }
+.cld-yt-dock webview.cld-yt-dock-frame { display: flex; }
+.cld-yt-dock.is-inline webview.cld-yt-dock-frame { height: var(--cld-inline-height, auto) !important; }
+.cld-yt-dock.is-dragging webview.cld-yt-dock-frame { pointer-events: none; }

@@ -12,6 +12,7 @@ import { NOTE_SUFFIXES, dateLocale, noteSuffix, setLanguage, sourceLabel, t, tim
 import { AmbientPlayer } from "./ambient";
 import { parseYouTubeUrl } from "./youtube";
 import { fetchShowEpisodes, resolvePodcastLink, resolvePodcastShow, PODCAST_PLATFORM_LABELS, type PodcastEpisode } from "./podcast";
+import { VIDEO_PLATFORM_LABELS, fetchVideoAspect, formatClock, resolveVideoLink, videoFromFrontmatter, type VideoInfo } from "./video";
 import { ThemePackManager, ThemePackStoreModal, sanitizePack, type ThemePack } from "./packs";
 import { ContentLibrarySettingsTab } from "./settings";
 import { SupportModal } from "./support";
@@ -73,7 +74,9 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
     setLanguage(this.settings.language);
     await this.saveData(this.settings);
     this.app.workspace.onLayoutReady(() => {
-      if (this.seedPodcastLinksSource()) {
+      const seededPodcasts = this.seedPodcastLinksSource();
+      const seededVideos = this.seedVideoLinksSource();
+      if (seededPodcasts || seededVideos) {
         void this.saveData(this.settings);
         this.refreshViews();
       }
@@ -209,6 +212,7 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
         ? loaded.claimedThemes.filter((value): value is DashboardTheme => ["grass", "blue", "pink", "rose", "black", "glass"].includes(value))
         : [],
       podcastLinksSeeded: loaded?.podcastLinksSeeded === true,
+      videoLinksSeeded: loaded?.videoLinksSeeded === true,
       podcastSubscriptions: Array.isArray(loaded?.podcastSubscriptions)
         ? loaded.podcastSubscriptions.filter((entry) => entry && typeof entry.url === "string")
           .map((entry) => ({ ...entry, seen: Array.isArray(entry.seen) ? entry.seen : [] }))
@@ -297,13 +301,51 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
     return true;
   }
 
+  /**
+   * Adds the 视频收藏 category once, in its own folder (never one another category uses).
+   */
+  private seedVideoLinksSource(): boolean {
+    if (this.settings.videoLinksSeeded) return false;
+    this.settings.videoLinksSeeded = true;
+    if (this.settings.sources.some((source) => source.kind === "video")) return true;
+    this.settings.sources.push({
+      id: "source-video-links",
+      name: "视频收藏",
+      folder: this.defaultVideoFolder(),
+      kind: "video",
+      group: "videos",
+      icon: "clapperboard",
+      coverPath: "",
+      enabled: true,
+    });
+    return true;
+  }
+
+  /** Folder for a video category: 视频收藏, unless another category already uses it. */
+  defaultVideoFolder(excludeSourceId?: string): string {
+    const used = new Set(this.settings.sources
+      .filter((source) => source.id !== excludeSourceId && source.folder)
+      .map((source) => normalizePath(source.folder).replace(/\/$/, "")));
+    const base = normalizePath("视频收藏");
+    for (let index = 1; index < 100; index += 1) {
+      const candidate = index === 1 ? base : `${base}-${index}`;
+      if (!used.has(candidate)) return candidate;
+    }
+    return `${base}-${Date.now()}`;
+  }
+
   private normalizeSourceGroupOrder(value: unknown): SourceGroup[] {
-    const defaults: SourceGroup[] = ["podcast", "podlinks", "music", "information", "skills", "bookshelf", "ideas", "needs"];
+    const defaults: SourceGroup[] = ["podcast", "podlinks", "music", "videos", "information", "skills", "bookshelf", "ideas", "needs"];
     const requested = (Array.isArray(value) ? value : []).slice();
     // Older saved orders don't know 播客收藏 yet: put it right after the TTS podcast group.
     if (requested.length && !requested.includes("podlinks")) {
       const at = requested.indexOf("podcast");
       requested.splice(at >= 0 ? at + 1 : requested.length, 0, "podlinks");
+    }
+    // 视频收藏 is newer still: right after 音乐收藏.
+    if (requested.length && !requested.includes("videos")) {
+      const at = requested.indexOf("music");
+      requested.splice(at >= 0 ? at + 1 : requested.length, 0, "videos");
     }
     return [...requested.filter((entry): entry is SourceGroup => defaults.includes(entry as SourceGroup)), ...defaults]
       .filter((entry, index, array) => array.indexOf(entry) === index)
@@ -322,7 +364,7 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
 
   private normalizeSource(source: ContentSource): ContentSource {
     const folder = source.folder || "";
-    const requestedKind = ["book", "podcast", "podlink", "music", "x", "news", "clip", "generic"].includes(source.kind)
+    const requestedKind = ["book", "podcast", "podlink", "music", "video", "x", "news", "clip", "generic"].includes(source.kind)
       ? source.kind
       : "generic";
     const isYouTubeArticleFolder = folder.split("/").pop()?.trim().toLowerCase() === "youtube podcast";
@@ -331,7 +373,7 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
       name: source.name || "New source",
       folder,
       kind: isYouTubeArticleFolder ? "generic" : requestedKind,
-      group: (["information", "skills", "bookshelf", "ideas", "needs", "podcast", "podlinks", "music"] as SourceGroup[]).includes(source.group)
+      group: (["information", "skills", "bookshelf", "ideas", "needs", "podcast", "podlinks", "music", "videos"] as SourceGroup[]).includes(source.group)
         ? source.group
         : this.inferSourceGroup(source),
       icon: source.icon || "folder",
@@ -763,6 +805,7 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
   private inferSourceGroup(source: ContentSource): SourceGroup {
     const value = `${source.name || ""} ${source.folder || ""}`.toLowerCase();
     if (source.kind === "podlink") return "podlinks";
+    if (source.kind === "video") return "videos";
     if (value.includes("tts audio") || source.kind === "podcast") return "podcast";
     if (value.includes("音乐") || value.includes("music") || source.kind === "music") return "music";
     if (value.includes("weave epub") || source.kind === "book") return "bookshelf";
@@ -1051,6 +1094,137 @@ export default class ContentLibraryDashboardPlugin extends Plugin {
       .join("\n");
     const body = episode.notes.trim() || t("这一期没有 show notes。");
     return this.app.vault.create(path, `---\n${yaml}\n---\n\n${body}\n`);
+  }
+
+  /** Looks up a YouTube / Bilibili link and saves it as a video note (chapters + description). */
+  async createVideoNote(source: ContentSource, link: string, title = ""): Promise<{ file: TFile; video: VideoInfo; existed: boolean }> {
+    const video = await resolveVideoLink(link, title);
+    const existing = this.findVideoNote(source, video);
+    if (existing) return { file: existing, video, existed: true };
+    return { file: await this.writeVideoNote(source, video), video, existed: false };
+  }
+
+  private findVideoNote(source: ContentSource, video: VideoInfo): TFile | null {
+    const folder = normalizePath(source.folder);
+    return this.app.vault.getMarkdownFiles().find((file) => {
+      if (!file.path.startsWith(`${folder}/`)) return false;
+      return this.app.metadataCache.getFileCache(file)?.frontmatter?.video_key === video.key;
+    }) ?? null;
+  }
+
+  private async writeVideoNote(source: ContentSource, video: VideoInfo): Promise<TFile> {
+    const folder = normalizePath(source.folder);
+    await this.ensureFolder(folder);
+    const title = video.title || t("未命名视频");
+    const safeTitle = title.replace(/[\\/:*?"<>|#^[\]]/g, "-").slice(0, 100).trim() || t("未命名视频");
+    let path = normalizePath(`${folder}/${safeTitle}.md`);
+    let counter = 2;
+    while (this.app.vault.getAbstractFileByPath(path)) {
+      path = normalizePath(`${folder}/${safeTitle}-${counter}.md`);
+      counter += 1;
+    }
+    const cover = video.platform === "bilibili" ? await this.saveVideoCover(folder, video) : video.cover;
+    const summarySource = video.chapters.length ? "creator_chapters" : "none";
+    const fields: Array<[string, string | number]> = [
+      ["type", "video"],
+      ["title", title],
+      ["platform", video.platform],
+      ["url", video.url],
+      ["video_id", video.videoId],
+      ["part", video.part > 1 ? video.part : 0],
+      ["video_key", video.key],
+      ["author", video.author],
+      ["cover", cover],
+      ["duration", video.duration ? formatClock(video.duration) : ""],
+      ["aspect", video.aspect],
+      ["published", video.published],
+      ["summary_source", summarySource],
+      ["added", this.dateKey()],
+    ];
+    const yaml = fields
+      .filter(([, value]) => value !== "" && value !== 0)
+      .map(([key, value]) => `${key}: ${typeof value === "number" ? value : JSON.stringify(value)}`)
+      .join("\n");
+    const points = video.chapters.length
+      ? [
+        `> ${video.chapterSource === "platform" ? t("要点来自创作者设置的章节") : t("要点来自简介里创作者写的时间戳")}`,
+        "",
+        ...video.chapters.map((chapter) => `- [${formatClock(chapter.start)}] ${chapter.title.replace(/\s+/g, " ")}`),
+      ].join("\n")
+      : video.platform === "quark"
+      ? `> ${t("网盘视频没有章节。在下面“我的笔记”里写 [12:30] 这样的时间戳，点一下就能跳过去。")}`
+      : `> ${t("无要点：这个视频没有创作者章节。")}`;
+    const description = video.description.trim()
+      ? video.description.trim().replace(/\r\n?/g, "\n").split("\n").map((line) => line.trimEnd()).join("  \n")
+      : video.platform === "quark" ? t("（网盘视频没有简介）") : t("（这个视频没有简介）");
+    const platform = VIDEO_PLATFORM_LABELS[video.platform];
+    const body = [
+      `## ${t("要点")}`,
+      points,
+      "",
+      `## ${t("简介原文")}`,
+      `*${platform}${video.author ? ` · ${video.author}` : ""}*`,
+      "",
+      description,
+      "",
+      `## ${t("我的笔记")}`,
+      "",
+    ].join("\n");
+    return this.app.vault.create(path, `---\n${yaml}\n---\n\n${body}\n`);
+  }
+
+  private aspectLookups = new Map<string, Promise<number>>();
+
+  /** Saves the file name read from Quark's player page as the title of a 夸克网盘 video note. */
+  async setVideoTitle(file: TFile, title: string): Promise<void> {
+    const clean = title.trim();
+    if (!clean) return;
+    await this.app.fileManager.processFrontMatter(file, (data: Record<string, unknown>) => { data.title = clean; });
+  }
+
+  /** Picture shape (width ÷ height) of a video note; looked up once and saved for notes made before it was recorded. */
+  videoAspect(file: TFile): Promise<number> {
+    const frontmatter = (this.app.metadataCache.getFileCache(file)?.frontmatter ?? {}) as Record<string, unknown>;
+    const saved = Number(frontmatter.aspect);
+    if (saved > 0) return Promise.resolve(saved);
+    const pending = this.aspectLookups.get(file.path);
+    if (pending) return pending;
+    const video = videoFromFrontmatter(frontmatter);
+    if (!video) return Promise.resolve(0);
+    const lookup = fetchVideoAspect(video.platform, video.videoId, video.part).then(async (aspect) => {
+      if (aspect > 0) await this.app.fileManager.processFrontMatter(file, (data: Record<string, unknown>) => { data.aspect = aspect; });
+      return aspect;
+    }).catch((error) => {
+      console.warn("[Content Library] Video size lookup failed", error);
+      this.aspectLookups.delete(file.path);
+      return 0;
+    });
+    this.aspectLookups.set(file.path, lookup);
+    return lookup;
+  }
+
+  /** Bilibili covers refuse other sites' referers, so a copy is kept next to the notes. */
+  private async saveVideoCover(folder: string, video: VideoInfo): Promise<string> {
+    if (!video.cover) return "";
+    try {
+      const response = await requestUrl({
+        url: video.cover.includes("@") ? video.cover : `${video.cover}@640w_400h_1c.jpg`,
+        headers: { Referer: "https://www.bilibili.com/", "User-Agent": "Mozilla/5.0" },
+      });
+      const type = response.headers["content-type"]?.split(";")[0] || "";
+      if (!type.startsWith("image/") || !response.arrayBuffer.byteLength) return video.cover;
+      const extension = type.includes("png") ? "png" : type.includes("webp") ? "webp" : "jpg";
+      const coverFolder = normalizePath(`${folder}/covers`);
+      await this.ensureFolder(coverFolder);
+      const path = normalizePath(`${coverFolder}/${video.key.replace(/[^\w-]+/g, "-")}.${extension}`);
+      const existing = this.app.vault.getAbstractFileByPath(path);
+      if (existing instanceof TFile) await this.app.vault.modifyBinary(existing, response.arrayBuffer);
+      else await this.app.vault.createBinary(path, response.arrayBuffer);
+      return path;
+    } catch (error) {
+      console.warn("[Content Library] Bilibili cover download failed", error);
+      return video.cover;
+    }
   }
 
   /** Moves a podcast episode note to the trash (recoverable). Followed shows won't re-add it. */
